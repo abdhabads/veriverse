@@ -1,4 +1,5 @@
 import { attachDatabasePool } from "@vercel/functions";
+import type { MongoClient } from "mongodb";
 import mongoose from "mongoose";
 
 const MONGO_URI = process.env.MONGO_URI ?? process.env.MONGODB_URI;
@@ -32,6 +33,10 @@ const cached: MongooseCache = global.mongooseCache || {
 
 global.mongooseCache = cached;
 
+function getNativeMongoClient(mongooseInstance: typeof mongoose): MongoClient {
+  return mongooseInstance.connection.getClient();
+}
+
 export async function connectDB() {
   if (cached.conn) return cached.conn;
 
@@ -46,7 +51,7 @@ export async function connectDB() {
   cached.conn = await cached.promise;
 
   if (!cached.poolAttached) {
-    attachDatabasePool(cached.conn.connection.getClient());
+    attachDatabasePool(getNativeMongoClient(cached.conn));
     cached.poolAttached = true;
   }
 
