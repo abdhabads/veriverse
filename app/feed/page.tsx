@@ -13,6 +13,7 @@ import ModerationReasonList from "@/components/ModerationReasonList";
 import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
 import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 import VerificationBadge from "@/components/VerificationBadge";
+import ActionIcon from "@/components/ActionIcons";
 import { api, getErrorMessage } from "@/lib/apiClient";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { getExpertReviewReasons } from "@/lib/expertReview";
@@ -712,7 +713,11 @@ export default function FeedPage() {
 
             <div className="vv-card p-5">
               <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                <span role="img" aria-label="brain">🧠</span> How VeriVerse Works
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-veriverse-purple">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
+                  <path d="M12 8V12L15 14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                How VeriVerse Works
               </h2>
               <ul className="list-disc pl-6 space-y-2 text-gray-800 text-base">
                 <li>AI checks content risk</li>
@@ -1100,14 +1105,15 @@ export default function FeedPage() {
                         ...prev,
                         [post._id]: !prev[post._id],
                       }))}
-                      className="w-full text-left px-3 py-2 rounded border border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-between"
+                      className="w-full text-left px-3 py-2.5 rounded-2xl border border-veriverse-border bg-white/60 hover:bg-white transition-colors flex items-center justify-between"
                     >
-                      <span className="text-sm font-medium text-slate-700">
+                      <span className="text-sm font-medium text-veriverse-dark">
                         Grounded Evidence {post.groundingSources?.length ? `(${post.groundingSources.length})` : ""}
                       </span>
-                      <span className="text-xs text-slate-500">
-                        {expandedEvidence[post._id] ? "▼" : "▶"}
-                      </span>
+                      <ActionIcon
+                        name="chevronDown"
+                        className={`text-veriverse-dark/50 transition-transform ${expandedEvidence[post._id] ? "rotate-180" : ""}`}
+                      />
                     </button>
 
                     {expandedEvidence[post._id] && (
@@ -1140,7 +1146,10 @@ export default function FeedPage() {
                             aria-disabled={post.finalized}
                             className="vv-post-action-button vv-post-action-strong"
                           >
-                            <span>✅ Endorse</span>
+                            <span className="flex items-center gap-1.5">
+                              <ActionIcon name="thumbsUp" />
+                              Endorse
+                            </span>
                             <span>{post.accurateVotes}</span>
                           </button>
                           <button
@@ -1150,22 +1159,30 @@ export default function FeedPage() {
                             aria-disabled={post.finalized}
                             className="vv-post-action-button vv-post-action-warn"
                           >
-                            <span>❌ Oppose</span>
+                            <span className="flex items-center gap-1.5">
+                              <ActionIcon name="thumbsDown" />
+                              Oppose
+                            </span>
                             <span>{post.inaccurateVotes}</span>
                           </button>
                           <button
                             onClick={() => repostPost(post._id)}
                             className="vv-post-action-button"
                           >
-                            <span>🔁 Repost</span>
+                            <span className="flex items-center gap-1.5">
+                              <ActionIcon name="repost" />
+                              Repost
+                            </span>
                             <span>{post.repostsCount || 0}</span>
                           </button>
                           <button
                             onClick={() => savePost(post._id)}
                             className="vv-post-action-button"
                           >
-                            <span>{savedPostIds.includes(post._id) ? "Saved" : "Save"}</span>
-                            <span>↗</span>
+                            <span className="flex items-center gap-1.5">
+                              <ActionIcon name={savedPostIds.includes(post._id) ? "bookmarkFilled" : "bookmark"} />
+                              {savedPostIds.includes(post._id) ? "Saved" : "Save"}
+                            </span>
                           </button>
                         </div>
                       </div>
@@ -1182,8 +1199,10 @@ export default function FeedPage() {
                                 onClick={() => startEdit(post._id, post.content)}
                                 className="vv-post-action-button"
                               >
-                                <span>Edit</span>
-                                <span>✎</span>
+                                <span className="flex items-center gap-1.5">
+                                  <ActionIcon name="pencil" />
+                                  Edit
+                                </span>
                               </button>
                               <button
                                 onClick={() => {
@@ -1192,8 +1211,10 @@ export default function FeedPage() {
                                 }}
                                 className="vv-post-action-button vv-post-action-warn"
                               >
-                                <span>Delete</span>
-                                <span>×</span>
+                                <span className="flex items-center gap-1.5">
+                                  <ActionIcon name="trash" />
+                                  Delete
+                                </span>
                               </button>
                             </div>
                           )}
@@ -1204,23 +1225,27 @@ export default function FeedPage() {
                                   onClick={() => followUser(post.author._id)}
                                   className="vv-post-action-button"
                                 >
-                                  <span>
+                                  <span className="flex items-center gap-1.5">
+                                    <ActionIcon
+                                      name={followedUserIds.includes(post.author._id) ? "userCheck" : "userPlus"}
+                                    />
                                     {followedUserIds.includes(post.author._id)
                                       ? "Following"
                                       : "Follow"}
                                   </span>
-                                  <span>+</span>
                                 </button>
                                 <button
                                   onClick={() => toggleRelation(post.author._id, "mute")}
                                   className="vv-post-action-button"
                                 >
-                                  <span>
+                                  <span className="flex items-center gap-1.5">
+                                    <ActionIcon
+                                      name={hasRelation(post.author._id, "mute") ? "unmute" : "mute"}
+                                    />
                                     {hasRelation(post.author._id, "mute")
                                       ? "Unmute"
                                       : "Mute"}
                                   </span>
-                                  <span>◌</span>
                                 </button>
                                 <button
                                   onClick={() => {
@@ -1231,19 +1256,21 @@ export default function FeedPage() {
                                   }}
                                   className="vv-post-action-button vv-post-action-warn"
                                 >
-                                  <span>
+                                  <span className="flex items-center gap-1.5">
+                                    <ActionIcon name="shieldOff" />
                                     {hasRelation(post.author._id, "block")
                                       ? "Unblock"
                                       : "Block"}
                                   </span>
-                                  <span>!</span>
                                 </button>
                                 <button
                                   onClick={() => reportPost(post._id)}
                                   className="vv-post-action-button vv-post-action-warn"
                                 >
-                                  <span>Report</span>
-                                  <span>⚑</span>
+                                  <span className="flex items-center gap-1.5">
+                                    <ActionIcon name="flag" />
+                                    Report
+                                  </span>
                                 </button>
                               </div>
                               <select
