@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { useRouter } from "next/navigation";
-import { getDisplayedAiLabel } from "@/lib/trustPresentation";
+import PageWrapper from "@/components/PageWrapper";
+import TrustVerdictBadge from "@/components/TrustVerdictBadge";
+import { getAiLabelTone, getDisplayedAiLabel } from "@/lib/trustPresentation";
 
 type User = {
   _id: string;
@@ -21,6 +22,8 @@ type Post = {
   content: string;
   status: string;
   aiLabel: string;
+  expertDecision?: string;
+  verificationScore?: number | null;
   contradictionCount?: number;
   groundingSources?: Array<{
     stance: "supports" | "contradicts" | "context" | "unknown";
@@ -35,7 +38,6 @@ export default function PublicProfilePage({
 }: {
   params: Promise<{ username: string }>;
 }) {
-  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [message, setMessage] = useState("");
@@ -56,95 +58,86 @@ export default function PublicProfilePage({
   };
 
   return (
-    <div className="vv-page">
-      <div className="vv-navbar">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="vv-title">VeriVerse</h1>
-            <p className="text-sm text-slate-300">Verify. Trust. Earn.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => router.push("/feed")} className="vv-btn-nav">Feed</button>
-            <button onClick={() => router.push("/search")} className="vv-btn-nav">Search</button>
-          </div>
-        </div>
-      </div>
+    <PageWrapper title="Public Profile" subtitle="See a contributor's reputation, badges, and published claims.">
+      {message && <div className="vv-banner mb-4">{message}</div>}
 
-      <div className="vv-container">
-        <h2 className="vv-title mb-6">Public Profile</h2>
-
-        {message && (
-          <div className="vv-banner mb-4">{message}</div>
-        )}
-
-        {user && (
-          <div className="vv-card p-6 mb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-5 mb-4">
-              {user.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={user.username}
-                  className="w-16 h-16 rounded-full object-cover border"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-full bg-slate-200 border flex items-center justify-center text-sm text-slate-500">
-                  {user.username.slice(0, 1).toUpperCase()}
-                </div>
-              )}
-
-              <div>
-                <h3 className="text-2xl font-semibold">{user.username}</h3>
-                <p className="vv-subtitle">Reputation: {user.reputation}</p>
-                <p className="vv-subtitle">Reward Points: {user.rewardPoints}</p>
+      {user && (
+        <div className="vv-card p-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-5 mb-4">
+            {user.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt={user.username}
+                className="w-16 h-16 rounded-full object-cover border border-veriverse-border"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-veriverse-slate border border-veriverse-border flex items-center justify-center text-sm text-veriverse-dark/60">
+                {user.username.slice(0, 1).toUpperCase()}
               </div>
-            </div>
+            )}
 
-            <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                Bio
-              </p>
-              {user.bio ? (
-                <p className="text-sm leading-6 text-slate-700 whitespace-pre-wrap">{user.bio}</p>
-              ) : (
-                <p className="text-sm text-slate-500">This user has not added a bio yet.</p>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {(user.badges || []).length === 0 ? (
-                <span className="vv-subtitle">No badges yet</span>
-              ) : (
-                user.badges?.map((badge) => (
-                  <span key={badge} className="vv-pill-blue">{badge}</span>
-                ))
-              )}
+            <div>
+              <h3 className="text-2xl font-semibold">{user.username}</h3>
+              <p className="vv-subtitle">Reputation: {user.reputation}</p>
+              <p className="vv-subtitle">Reward Points: {user.rewardPoints}</p>
             </div>
           </div>
-        )}
 
-        <div className="vv-card p-6">
-          <h3 className="vv-section-title mb-4">Posts</h3>
+          <div className="vv-post-panel mb-4">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-veriverse-dark/50">
+              Bio
+            </p>
+            {user.bio ? (
+              <p className="text-sm leading-6 text-slate-700 whitespace-pre-wrap">{user.bio}</p>
+            ) : (
+              <p className="text-sm text-slate-500">This user has not added a bio yet.</p>
+            )}
+          </div>
 
-          {posts.length === 0 ? (
-            <p className="vv-subtitle">No public posts found.</p>
-          ) : (
-            <div className="space-y-4">
-              {posts.map((post) => (
-                <div key={post._id} className="vv-card-soft p-4">
-                  <p className="mb-2 text-sm">{post.content}</p>
-                  <div className="text-sm text-slate-600 space-y-1">
-                    <p>Status: {post.status}</p>
-                    <p>AI Signal: {getDisplayedAiLabel(post).replaceAll("_", " ")}</p>
-                    <p>
-                      Votes: {post.accurateVotes} accurate / {post.inaccurateVotes} inaccurate
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {(user.badges || []).length === 0 ? (
+              <span className="vv-subtitle">No badges yet</span>
+            ) : (
+              user.badges?.map((badge) => (
+                <span key={badge} className="vv-pill-blue">{badge}</span>
+              ))
+            )}
+          </div>
         </div>
+      )}
+
+      <div className="vv-card p-6">
+        <h3 className="vv-section-title mb-4">Posts</h3>
+
+        {posts.length === 0 ? (
+          <p className="vv-subtitle">No public posts found.</p>
+        ) : (
+          <div className="space-y-4">
+            {posts.map((post) => (
+              <div key={post._id} className="vv-card-soft p-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <TrustVerdictBadge
+                      status={post.status}
+                      expertDecision={post.expertDecision}
+                      verificationScore={post.verificationScore}
+                      contradictionCount={post.contradictionCount}
+                      groundingSources={post.groundingSources}
+                    />
+                    <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(getDisplayedAiLabel(post))}`}>
+                      AI: {getDisplayedAiLabel(post).replaceAll("_", " ")}
+                    </span>
+                  </div>
+                  <span className="text-xs text-veriverse-dark/50">
+                    {post.accurateVotes} accurate / {post.inaccurateVotes} inaccurate
+                  </span>
+                </div>
+                <p className="text-sm text-slate-700">{post.content}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+    </PageWrapper>
   );
 }

@@ -16,7 +16,8 @@ export type ActionIconName =
   | "unmute"
   | "shieldOff"
   | "flag"
-  | "chevronDown";
+  | "chevronDown"
+  | "arrowRight";
 
 type IconProps = {
   className?: string;
@@ -180,6 +181,14 @@ function ChevronDownIcon(props: IconProps) {
   );
 }
 
+function ArrowRightIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12H19M13 6L19 12L13 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 const ICONS: Record<ActionIconName, (props: IconProps) => React.ReactElement> = {
   thumbsUp: ThumbsUpIcon,
   thumbsDown: ThumbsDownIcon,
@@ -195,6 +204,7 @@ const ICONS: Record<ActionIconName, (props: IconProps) => React.ReactElement> = 
   shieldOff: ShieldOffIcon,
   flag: FlagIcon,
   chevronDown: ChevronDownIcon,
+  arrowRight: ArrowRightIcon,
 };
 
 export default function ActionIcon({

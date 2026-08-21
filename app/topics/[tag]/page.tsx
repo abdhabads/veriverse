@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import PageWrapper from "@/components/PageWrapper";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
+import ActionIcon from "@/components/ActionIcons";
+import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 
 type Author = {
   _id: string;
@@ -14,12 +16,20 @@ type Author = {
   avatarUrl?: string;
 };
 
+type GroundingSource = {
+  stance: "supports" | "contradicts" | "context" | "unknown";
+};
+
 type Post = {
   _id: string;
   content: string;
   status: string;
   hashtags?: string[];
   author: Author;
+  expertDecision?: string;
+  verificationScore?: number | null;
+  contradictionCount?: number;
+  groundingSources?: GroundingSource[];
 };
 
 export default function TopicPage({
@@ -95,12 +105,21 @@ export default function TopicPage({
             <div key={post._id} className="vv-card p-4 sm:p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 flex-1">
-                  <button
-                    onClick={() => router.push(`/u/${post.author?.username}`)}
-                    className="font-medium vv-link text-sm"
-                  >
-                    {post.author?.username}
-                  </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      onClick={() => router.push(`/u/${post.author?.username}`)}
+                      className="font-medium vv-link text-sm"
+                    >
+                      {post.author?.username}
+                    </button>
+                    <TrustVerdictBadge
+                      status={post.status}
+                      expertDecision={post.expertDecision}
+                      verificationScore={post.verificationScore}
+                      contradictionCount={post.contradictionCount}
+                      groundingSources={post.groundingSources}
+                    />
+                  </div>
 
                   <p className="my-3 text-sm leading-7 text-slate-800 sm:text-[15px]">{post.content}</p>
 
@@ -126,7 +145,7 @@ export default function TopicPage({
                         className="vv-post-action-button vv-post-action-strong"
                       >
                         <span>View Post</span>
-                        <span>→</span>
+                        <ActionIcon name="arrowRight" />
                       </button>
                       <button
                         onClick={() => router.push(`/topics/${tag}`)}
@@ -136,9 +155,6 @@ export default function TopicPage({
                         <span>#</span>
                       </button>
                     </div>
-                    <p className="text-xs text-slate-500 mt-3">
-                      Status: {post.status}
-                    </p>
                   </div>
                 </div>
               </div>

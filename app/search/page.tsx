@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import EmptyState from "@/components/EmptyState";
 import PageWrapper from "@/components/PageWrapper";
 import Toast from "@/components/Toast";
+import ActionIcon from "@/components/ActionIcons";
+import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 
 type User = {
   _id: string;
@@ -26,12 +28,20 @@ type Author = {
   badges?: string[];
 };
 
+type GroundingSource = {
+  stance: "supports" | "contradicts" | "context" | "unknown";
+};
+
 type Post = {
   _id: string;
   content: string;
   status: string;
   hashtags?: string[];
   author: Author;
+  expertDecision?: string;
+  verificationScore?: number | null;
+  contradictionCount?: number;
+  groundingSources?: GroundingSource[];
 };
 
 export default function SearchPage() {
@@ -217,12 +227,21 @@ function SearchPageInner() {
             <div className="space-y-3">
               {posts.map((post) => (
                 <div key={post._id} className="vv-post-panel-accent">
-                  <button
-                    onClick={() => router.push(`/u/${post.author?.username}`)}
-                    className="font-medium vv-link text-sm"
-                  >
-                    {post.author?.username}
-                  </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      onClick={() => router.push(`/u/${post.author?.username}`)}
+                      className="font-medium vv-link text-sm"
+                    >
+                      {post.author?.username}
+                    </button>
+                    <TrustVerdictBadge
+                      status={post.status}
+                      expertDecision={post.expertDecision}
+                      verificationScore={post.verificationScore}
+                      contradictionCount={post.contradictionCount}
+                      groundingSources={post.groundingSources}
+                    />
+                  </div>
 
                   <p className="text-sm text-slate-700 my-3 leading-7">{post.content}</p>
 
@@ -246,7 +265,7 @@ function SearchPageInner() {
                         className="vv-post-action-button vv-post-action-strong"
                       >
                         <span>View Post</span>
-                        <span>→</span>
+                        <ActionIcon name="arrowRight" />
                       </button>
                       <button
                         onClick={() => router.push(`/topics/${post.hashtags?.[0] || ""}`)}
@@ -257,7 +276,6 @@ function SearchPageInner() {
                         <span>#</span>
                       </button>
                     </div>
-                    <p className="text-xs text-slate-500 mt-3">Status: {post.status}</p>
                   </div>
                 </div>
               ))}
