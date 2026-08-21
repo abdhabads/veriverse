@@ -5,9 +5,8 @@ import User from "@/models/User";
 import { getUserFromRequest } from "@/lib/auth";
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
 
     if (!user) {

@@ -65,9 +65,8 @@ async function sumPointsByDay(model: any, startDate: Date) {
 }
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const admin = await getUserFromRequest(req);
 
     if (!admin || admin.role !== "admin") {

@@ -6,9 +6,8 @@ import Appeal from "@/models/Appeal";
 import { ok, fail } from "@/lib/apiResponse";
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
 
     if (!user || user.role !== "admin") {

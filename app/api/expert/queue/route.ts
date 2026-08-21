@@ -4,9 +4,8 @@ import Post from "@/models/Post";
 import { getUserFromRequest } from "@/lib/auth";
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const hoursSince = (value?: string | Date) => {
       const createdAt = new Date(value || Date.now());
       return Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60));

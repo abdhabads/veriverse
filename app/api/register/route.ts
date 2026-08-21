@@ -8,9 +8,8 @@ import { cleanString, isStrongEnoughPassword, isValidEmail } from "@/lib/validat
 import { ok, fail } from "@/lib/apiResponse";
 
 export async function POST(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "register"),
       windowMs: 60 * 1000,

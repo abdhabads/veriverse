@@ -4,9 +4,8 @@ import User from "@/models/User";
 import { getUserIdFromRequest } from "@/lib/auth";
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const userId = getUserIdFromRequest(req);
 
     if (!userId) {

@@ -8,9 +8,8 @@ type RouteContext = {
 };
 
 export async function GET(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const { username } = await context.params;
 
     const user = await User.findOne({ username }).select("-password");

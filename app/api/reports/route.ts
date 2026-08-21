@@ -10,9 +10,8 @@ import { ok, fail } from "@/lib/apiResponse";
 const allowedReasons = ["misinformation", "spam", "abuse", "other"];
 
 export async function POST(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
     if (!user) return fail("Unauthorized", 401);
 

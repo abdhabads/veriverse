@@ -317,9 +317,8 @@ async function getExportPayload(type: string) {
 }
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
 
     if (!user || user.role !== "admin") {

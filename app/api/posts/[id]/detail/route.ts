@@ -8,9 +8,8 @@ type RouteContext = {
 };
 
 export async function GET(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const { id } = await context.params;
 
     const post = await Post.findById(id).populate("author", "username reputation");

@@ -4,9 +4,8 @@ import User from "@/models/User";
 import Post from "@/models/Post";
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
     const type = (searchParams.get("type") || "all").trim();

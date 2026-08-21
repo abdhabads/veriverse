@@ -4,9 +4,8 @@ import UserRelation from "@/models/UserRelation";
 import { getUserFromRequest } from "@/lib/auth";
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
 
     if (!user) {

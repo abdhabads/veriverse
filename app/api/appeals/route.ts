@@ -9,9 +9,8 @@ import { cleanString, isValidObjectId } from "@/lib/validation";
 import { ok, fail } from "@/lib/apiResponse";
 
 export async function POST(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
     if (!user) return fail("Unauthorized", 401);
 

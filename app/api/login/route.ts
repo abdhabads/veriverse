@@ -10,9 +10,8 @@ import { fail } from "@/lib/apiResponse";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "login"),
       windowMs: 60 * 1000,

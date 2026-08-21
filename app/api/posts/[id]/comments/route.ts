@@ -14,9 +14,8 @@ type RouteContext = {
 };
 
 export async function GET(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const { id: postId } = await context.params;
 
     const comments = await Comment.find({ post: postId })
@@ -36,9 +35,8 @@ export async function GET(req: Request, context: RouteContext) {
 }
 
 export async function POST(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const userId = getUserIdFromRequest(req);
 
     if (!userId) {

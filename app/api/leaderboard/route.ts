@@ -3,9 +3,8 @@ import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 
 export async function GET() {
-  await connectDB();
-
   try {
+    await connectDB();
     const users = await User.find()
       .select("username reputation rewardPoints badges role createdAt")
       .sort({ reputation: -1, rewardPoints: -1 })

@@ -4,9 +4,8 @@ import User from "@/models/User";
 import { ok, fail } from "@/lib/apiResponse";
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const admin = await getUserFromRequest(req);
 
     if (!admin || admin.role !== "admin") {

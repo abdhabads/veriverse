@@ -13,9 +13,8 @@ type RouteContext = {
 };
 
 export async function PATCH(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
     if (!user) return fail("Unauthorized", 401);
 
@@ -59,9 +58,8 @@ export async function PATCH(req: Request, context: RouteContext) {
 }
 
 export async function DELETE(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
     if (!user) return fail("Unauthorized", 401);
 

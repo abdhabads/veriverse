@@ -7,9 +7,8 @@ type RouteContext = {
 };
 
 export async function GET(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const { id } = await context.params;
 
     const followers = await Follow.countDocuments({ following: id });

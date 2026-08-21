@@ -7,9 +7,8 @@ type RouteContext = {
 };
 
 export async function GET(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const { tag } = await context.params;
 
     const posts = await Post.find({

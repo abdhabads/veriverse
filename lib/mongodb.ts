@@ -2,10 +2,13 @@ import { attachDatabasePool } from "@vercel/functions";
 import type { MongoClient } from "mongodb";
 import mongoose from "mongoose";
 
-const MONGO_URI = process.env.MONGO_URI ?? process.env.MONGODB_URI;
-
 const getMongoUri = () => {
-  const mongoUri = process.env.MONGO_URI ?? process.env.MONGODB_URI;
+  const mongoUri =
+    process.env.MONGODB_URI ??
+    process.env.MONGO_URI ??
+    (process.env.NODE_ENV !== "production"
+      ? "mongodb://127.0.0.1:27017/veriverse"
+      : undefined);
 
   if (!mongoUri) {
     throw new Error("Please define MONGO_URI or MONGODB_URI in your environment");

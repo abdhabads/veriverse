@@ -16,9 +16,8 @@ import { TrustStatus } from "@/lib/trustTransitions";
 import { recordTrustEvent } from "@/lib/trustEvents";
 
 export async function POST(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const userId = getUserIdFromRequest(req);
 
     if (!userId) {
@@ -153,9 +152,8 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const requesterId = getUserIdFromRequest(req);
 
     let excludedAuthorIds: string[] = [];

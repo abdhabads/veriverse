@@ -18,9 +18,8 @@ type RouteContext = {
 };
 
 export async function PATCH(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const expert = await getUserFromRequest(req);
 
     if (!expert || !["expert", "admin"].includes(expert.role)) {

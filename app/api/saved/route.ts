@@ -4,9 +4,8 @@ import SavedPost from "@/models/SavedPost";
 import { getUserFromRequest } from "@/lib/auth";
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
     if (!user) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });

@@ -40,7 +40,8 @@ async function sumPointsByDay(model: any, startDate: Date) {
 }
 
 export async function GET(req: Request) {
-
+  try {
+    await connectDB();
 
     const today = new Date();
     const sevenDaysAgo = getPastDate(6);
@@ -50,56 +51,52 @@ export async function GET(req: Request) {
       return formatDateKey(d);
     });
 
-    await connectDB();
+    const admin = await getUserFromRequest(req);
 
+    if (!admin || admin.role !== "admin") {
+      return fail("Admin access required", 403);
+    }
 
-    try {
-      const admin = await getUserFromRequest(req);
-
-      if (!admin || admin.role !== "admin") {
-        return fail("Admin access required", 403);
-      }
-
-      // Fetch analytics variables after all dependencies are declared
-      const [
-        totalPosts,
-        verifiedPosts,
-        falsePosts,
-        disputedPosts,
-        flaggedPosts,
-        expertReviewPosts,
-        appealReviewPosts,
-        activeAppeals,
-        approvedAppeals,
-        rejectedAppeals,
-        highRiskPosts,
-        groundedCheckedPosts,
-        insufficientEvidencePosts,
-        contradictedEvidencePosts,
-        recentPosts,
-        recentRewardLogs,
-        recentReputationLogs,
-      ] = await Promise.all([
-        Post.countDocuments(),
-        Post.countDocuments({ status: "verified" }),
-        Post.countDocuments({ status: "false" }),
-        Post.countDocuments({ status: "disputed" }),
-        Post.countDocuments({ status: "flagged" }),
-        Post.countDocuments({ status: "under_expert_review" }),
-        Post.countDocuments({ status: "under_appeal_review" }),
-        Appeal.countDocuments({ status: { $in: ["pending", "under_review"] } }),
-        Appeal.countDocuments({ status: "approved" }),
-        Appeal.countDocuments({ status: "rejected" }),
-        Post.countDocuments({ aiRiskScore: { $gte: 35 } }),
-        Post.countDocuments({ groundingStatus: "checked" }),
-        Post.countDocuments({ groundingStatus: "insufficient_evidence" }),
-        Post.countDocuments({ contradictionCount: { $gte: 1 } }),
-        Post.find({ createdAt: { $gte: sevenDaysAgo } }).select(
-          "createdAt status aiRiskScore groundingStatus groundingConfidence contradictionCount supportCount"
-        ),
-        sumPointsByDay(RewardLog, sevenDaysAgo),
-        sumPointsByDay(ReputationLog, sevenDaysAgo),
-      ]);
+    // Fetch analytics variables after all dependencies are declared
+    const [
+      totalPosts,
+      verifiedPosts,
+      falsePosts,
+      disputedPosts,
+      flaggedPosts,
+      expertReviewPosts,
+      appealReviewPosts,
+      activeAppeals,
+      approvedAppeals,
+      rejectedAppeals,
+      highRiskPosts,
+      groundedCheckedPosts,
+      insufficientEvidencePosts,
+      contradictedEvidencePosts,
+      recentPosts,
+      recentRewardLogs,
+      recentReputationLogs,
+    ] = await Promise.all([
+      Post.countDocuments(),
+      Post.countDocuments({ status: "verified" }),
+      Post.countDocuments({ status: "false" }),
+      Post.countDocuments({ status: "disputed" }),
+      Post.countDocuments({ status: "flagged" }),
+      Post.countDocuments({ status: "under_expert_review" }),
+      Post.countDocuments({ status: "under_appeal_review" }),
+      Appeal.countDocuments({ status: { $in: ["pending", "under_review"] } }),
+      Appeal.countDocuments({ status: "approved" }),
+      Appeal.countDocuments({ status: "rejected" }),
+      Post.countDocuments({ aiRiskScore: { $gte: 35 } }),
+      Post.countDocuments({ groundingStatus: "checked" }),
+      Post.countDocuments({ groundingStatus: "insufficient_evidence" }),
+      Post.countDocuments({ contradictionCount: { $gte: 1 } }),
+      Post.find({ createdAt: { $gte: sevenDaysAgo } }).select(
+        "createdAt status aiRiskScore groundingStatus groundingConfidence contradictionCount supportCount"
+      ),
+      sumPointsByDay(RewardLog, sevenDaysAgo),
+      sumPointsByDay(ReputationLog, sevenDaysAgo),
+    ]);
 
 
     // (Removed duplicate destructuring block for analytics counts)

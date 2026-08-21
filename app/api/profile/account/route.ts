@@ -63,9 +63,8 @@ async function validateUserPassword(
 }
 
 export async function PATCH(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
 
     if (!user) {
@@ -112,9 +111,8 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
 
     if (!user) {

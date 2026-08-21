@@ -4,9 +4,8 @@ import Notification from "@/models/Notification";
 import { getUserFromRequest } from "@/lib/auth";
 
 export async function GET(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
 
     if (!user) {
@@ -39,9 +38,8 @@ export async function GET(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const user = await getUserFromRequest(req);
 
     if (!user) {

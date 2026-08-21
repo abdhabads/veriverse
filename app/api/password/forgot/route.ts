@@ -9,9 +9,8 @@ import { getRateLimitKey } from "@/lib/requestIdentity";
 const RESET_WINDOW_MS = 30 * 60 * 1000;
 
 export async function POST(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "forgot_password"),
       windowMs: 60 * 1000,

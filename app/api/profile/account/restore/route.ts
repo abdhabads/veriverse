@@ -11,9 +11,8 @@ import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
 
 export async function POST(req: Request) {
-  await connectDB();
-
   try {
+    await connectDB();
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "account_restore"),
       windowMs: 15 * 60 * 1000,

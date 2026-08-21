@@ -25,9 +25,8 @@ type RouteContext = {
 };
 
 export async function POST(req: Request, context: RouteContext) {
-  await connectDB();
-
   try {
+    await connectDB();
     const userId = getUserIdFromRequest(req);
     if (!userId) {
       return NextResponse.json(
