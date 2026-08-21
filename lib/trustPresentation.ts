@@ -1,3 +1,5 @@
+import type { TrustIconName } from "@/components/TrustIcons";
+
 export type GroundingSourceLike = {
   stance?: "supports" | "contradicts" | "context" | "unknown";
 };
@@ -38,12 +40,17 @@ export function getDisplayedAiLabel(input: TrustPresentationInput): DisplayAiLab
 
 // --- Trust Verdict ---
 
+// A disciplined 4-tone language shared across TrustVerdictBadge,
+// VerificationBadge, and GroundedEvidencePanel's stance pills: "positive"
+// (green), "negative" (red), "review" (gold - needs human attention), and
+// "neutral" (unresolved). Every verdict/stance maps onto one of these
+// rather than each component picking its own ad hoc color.
+export type TrustTone = "positive" | "negative" | "review" | "neutral";
+
 export type TrustVerdict = {
   label: string;
-  icon: string;
-  color: string;
-  bg: string;
-  border: string;
+  icon: TrustIconName;
+  tone: TrustTone;
   priority: number;
 };
 
@@ -68,123 +75,46 @@ export function getTrustVerdict(input: TrustVerdictInput): TrustVerdict {
 
   // Expert decisions always take highest priority
   if (expertDecision === "verified") {
-    return {
-      label: "Expert Verified",
-      icon: "✓",
-      color: "text-emerald-700",
-      bg: "bg-emerald-50",
-      border: "border-emerald-300",
-      priority: 100,
-    };
+    return { label: "Expert Verified", icon: "check", tone: "positive", priority: 100 };
   }
   if (expertDecision === "false") {
-    return {
-      label: "Expert Rejected",
-      icon: "✗",
-      color: "text-red-700",
-      bg: "bg-red-50",
-      border: "border-red-300",
-      priority: 100,
-    };
+    return { label: "Expert Rejected", icon: "x", tone: "negative", priority: 100 };
   }
   if (expertDecision === "disputed") {
-    return {
-      label: "Expert Disputed",
-      icon: "⚖",
-      color: "text-orange-700",
-      bg: "bg-orange-50",
-      border: "border-orange-300",
-      priority: 100,
-    };
+    return { label: "Expert Disputed", icon: "alert", tone: "review", priority: 100 };
   }
 
   // Review states next
   if (status === "under_expert_review") {
-    return {
-      label: "Under Expert Review",
-      icon: "🔍",
-      color: "text-blue-700",
-      bg: "bg-blue-50",
-      border: "border-blue-200",
-      priority: 80,
-    };
+    return { label: "Under Expert Review", icon: "search", tone: "review", priority: 80 };
   }
   if (status === "under_appeal_review") {
-    return {
-      label: "Under Appeal",
-      icon: "📋",
-      color: "text-violet-700",
-      bg: "bg-violet-50",
-      border: "border-violet-200",
-      priority: 75,
-    };
+    return { label: "Under Appeal", icon: "clipboard", tone: "review", priority: 75 };
   }
 
   // Contradiction evidence overrides score-based verdicts
   const hasContradiction = hasContradictoryEvidence({ contradictionCount, groundingSources });
   if (hasContradiction) {
-    return {
-      label: "Contradicted",
-      icon: "⚠",
-      color: "text-rose-700",
-      bg: "bg-rose-50",
-      border: "border-rose-300",
-      priority: 70,
-    };
+    return { label: "Contradicted", icon: "alert", tone: "negative", priority: 70 };
   }
 
   // Flagged by moderation
   if (status === "flagged") {
-    return {
-      label: "Flagged",
-      icon: "🚩",
-      color: "text-amber-700",
-      bg: "bg-amber-50",
-      border: "border-amber-300",
-      priority: 60,
-    };
+    return { label: "Flagged", icon: "flag", tone: "review", priority: 60 };
   }
 
   // Evidence-based verdicts
   const score = verificationScore ?? null;
   if (score !== null && score >= 0.8) {
-    return {
-      label: "Well Supported",
-      icon: "✓",
-      color: "text-emerald-700",
-      bg: "bg-emerald-50",
-      border: "border-emerald-200",
-      priority: 50,
-    };
+    return { label: "Well Supported", icon: "check", tone: "positive", priority: 50 };
   }
   if (score !== null && score >= 0.6) {
-    return {
-      label: "Supported",
-      icon: "✓",
-      color: "text-green-700",
-      bg: "bg-green-50",
-      border: "border-green-200",
-      priority: 40,
-    };
+    return { label: "Supported", icon: "check", tone: "positive", priority: 40 };
   }
   if (score !== null && score > 0 && score < 0.3) {
-    return {
-      label: "Weak Evidence",
-      icon: "✗",
-      color: "text-red-600",
-      bg: "bg-red-50",
-      border: "border-red-200",
-      priority: 30,
-    };
+    return { label: "Weak Evidence", icon: "x", tone: "negative", priority: 30 };
   }
 
   // Default
-  return {
-    label: "Unverified",
-    icon: "○",
-    color: "text-slate-500",
-    bg: "bg-slate-50",
-    border: "border-slate-200",
-    priority: 0,
-  };
+  return { label: "Unverified", icon: "circle", tone: "neutral", priority: 0 };
 }

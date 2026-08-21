@@ -8,6 +8,15 @@
   --color-veriverse-slate: #f4efe4;
   --color-veriverse-border: rgba(20, 32, 51, 0.12);
   --shadow-vv: 0 18px 50px rgba(20, 32, 51, 0.08);
+
+  /* Trust-verdict tones: a single disciplined 4-color language shared by
+     TrustVerdictBadge, VerificationBadge, and GroundedEvidencePanel, so
+     "how trustworthy is this claim" reads the same way everywhere instead
+     of each component picking its own ad hoc palette. */
+  --color-verdict-positive: #1f6f4a;
+  --color-verdict-negative: #9c2b22;
+  --color-verdict-review: #8a5a12;
+  --color-verdict-neutral: rgba(20, 32, 51, 0.62);
 }
 
 html,
@@ -377,6 +386,43 @@ h6 {
     @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium;
     background: rgba(163, 38, 31, 0.12);
     color: #9b2f22;
+  }
+
+  /* Trust-verdict pills: the badge shown for a post's overall verdict
+     (TrustVerdictBadge) and its evidence-strength readout
+     (VerificationBadge). One shared shape, four tones. */
+  .vv-verdict-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold;
+  }
+
+  .vv-verdict-positive {
+    background: rgba(31, 111, 74, 0.09);
+    color: var(--color-verdict-positive);
+    border-color: rgba(31, 111, 74, 0.22);
+  }
+
+  .vv-verdict-negative {
+    background: rgba(156, 43, 34, 0.08);
+    color: var(--color-verdict-negative);
+    border-color: rgba(156, 43, 34, 0.20);
+  }
+
+  .vv-verdict-review {
+    background: rgba(138, 90, 18, 0.13);
+    color: var(--color-verdict-review);
+    border-color: rgba(138, 90, 18, 0.24);
+  }
+
+  .vv-verdict-neutral {
+    background: rgba(20, 32, 51, 0.05);
+    color: var(--color-verdict-neutral);
+    border-color: rgba(20, 32, 51, 0.12);
+  }
+
+  /* Per-source evidence stance pills (GroundedEvidencePanel): smaller and
+     quieter than the main verdict badge, same four tones for consistency. */
+  .vv-stance-pill {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em];
   }
 
   .vv-stat-card {
