@@ -54,6 +54,26 @@ only, no other text.
   "evidenceRiskAdjustment": number
 }
 
+"stance" is ALWAYS relative to the user's claim as literally stated, never a
+judgment of the source's general trustworthiness or topical relevance. A
+source can be highly authoritative and directly on-topic while still
+CONTRADICTING the claim - for example, if the claim asserts a specific
+person currently holds a role or title, and a source shows a DIFFERENT
+person actually holds it, that source CONTRADICTS the claim, even though
+it is a reliable source clearly about that same role/title.
+
+- "supports": the source confirms the claim as stated is true.
+- "contradicts": the source shows the claim as stated is false (this
+  includes sources that establish the correct fact is something else
+  entirely, not just sources that explicitly call the claim "false").
+- "context": relevant background that doesn't directly confirm or refute
+  the specific claim.
+- "unknown": the source's relationship to the claim can't be determined.
+
+Every source's "stance" must be consistent with groundingSummary: if the
+summary concludes the claim is false, the sources that establish that
+should be marked "contradicts", not "supports".
+
 Rules:
 - If evidence strongly contradicts the claim, use a positive adjustment like +10 to +25.
 - If evidence strongly supports the claim, use a negative adjustment like -5 to -20.
