@@ -11,6 +11,7 @@ import { useProtectedRolePage } from "@/hooks/useProtectedRolePage";
 import { fetchExpertQueue, submitExpertDecision } from "@/lib/adminClient";
 import { runMutation } from "@/lib/runMutation";
 import { getErrorMessage } from "@/lib/apiClient";
+import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 
 type Author = {
   _id: string;
@@ -25,6 +26,8 @@ type ExpertPost = {
   status: string;
   aiLabel?: string;
   aiRiskScore?: number;
+  expertDecision?: string;
+  verificationScore?: number | null;
   moderationReasons?: string[];
   groundingSummary?: string;
   groundingSources?: Array<{
@@ -141,8 +144,14 @@ export default function ExpertPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <span className="vv-pill-purple">{post.status}</span>
-                  <span className="vv-pill-red">
+                  <TrustVerdictBadge
+                    status={post.status}
+                    expertDecision={post.expertDecision}
+                    verificationScore={post.verificationScore}
+                    contradictionCount={post.contradictionCount}
+                    groundingSources={post.groundingSources}
+                  />
+                  <span className="vv-verdict-pill vv-verdict-negative">
                     Risk {Number(post.aiRiskScore || 0)}
                   </span>
                 </div>
@@ -153,7 +162,7 @@ export default function ExpertPage() {
               {(post.moderationReasons ?? []).length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   {(post.moderationReasons ?? []).map((reason) => (
-                    <span key={reason} className="vv-pill-red">
+                    <span key={reason} className="vv-verdict-pill vv-verdict-negative">
                       {reason}
                     </span>
                   ))}
@@ -165,13 +174,13 @@ export default function ExpertPage() {
                   <p className="text-xs text-slate-500 mb-1">Grounding Summary</p>
                   <p className="text-sm text-slate-700 mb-2">{post.groundingSummary}</p>
                   <div className="flex flex-wrap gap-2">
-                    <span className="vv-pill-gray">
+                    <span className="vv-verdict-pill vv-verdict-neutral">
                       Confidence: {Number(post.groundingConfidence || 0)}
                     </span>
-                    <span className="vv-pill-red">
+                    <span className="vv-verdict-pill vv-verdict-negative">
                       Contradictions: {Number(post.contradictionCount || 0)}
                     </span>
-                    <span className="vv-pill-green">
+                    <span className="vv-verdict-pill vv-verdict-positive">
                       Supports: {Number(post.supportCount || 0)}
                     </span>
                   </div>

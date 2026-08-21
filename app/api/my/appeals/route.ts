@@ -16,7 +16,10 @@ export async function GET(req: Request) {
     }
 
     const appeals = await Appeal.find({ appellant: user._id })
-      .populate("post", "content status")
+      .populate(
+        "post",
+        "content status expertDecision verificationScore contradictionCount groundingSources trustDecisionVersion"
+      )
       .sort({ createdAt: -1 });
 
     return NextResponse.json({

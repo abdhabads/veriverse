@@ -10,6 +10,7 @@ import { requireAuthenticated } from "@/lib/frontendAccess";
 import { usePageState } from "@/hooks/usePageState";
 import { fetchMyAppeals } from "@/lib/profileTrustClient";
 import { getErrorMessage } from "@/lib/apiClient";
+import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 
 type Appeal = {
   _id: string;
@@ -22,6 +23,12 @@ type Appeal = {
     content?: string;
     status?: string;
     trustDecisionVersion?: number;
+    expertDecision?: string;
+    verificationScore?: number | null;
+    contradictionCount?: number;
+    groundingSources?: Array<{
+      stance: "supports" | "contradicts" | "context" | "unknown";
+    }>;
   };
 };
 
@@ -100,13 +107,21 @@ export default function AppealsPage() {
 
               {appeal.post?.content && (
                 <div className="vv-card-soft p-3 mb-3">
-                  <p className="text-xs text-slate-500 mb-1">Related Post</p>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-slate-500">Related Post</p>
+                    <TrustVerdictBadge
+                      status={appeal.post.status || "unverified"}
+                      expertDecision={appeal.post.expertDecision}
+                      verificationScore={appeal.post.verificationScore}
+                      contradictionCount={appeal.post.contradictionCount}
+                      groundingSources={appeal.post.groundingSources}
+                    />
+                  </div>
                   <p className="text-sm text-slate-700 mb-1">
                     {appeal.post.content}
                   </p>
                   <p className="text-xs text-slate-500">
-                    Post Status: {appeal.post.status} • Version:{" "}
-                    {Number(appeal.post.trustDecisionVersion || 1)}
+                    Version: {Number(appeal.post.trustDecisionVersion || 1)}
                   </p>
                 </div>
               )}
