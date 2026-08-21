@@ -10,8 +10,8 @@ import { evaluateContradictionForcing } from "@/lib/contradictionForcing";
 import { setPostTrustStatus } from "@/lib/setPostTrustStatus";
 
 const TARGET_CONTENT = [
-  /sickle cell/i,
-  /camels.*speed|speed.*camels/i,
+  /tinubu/i,
+  /peter obi/i,
 ];
 
 async function main() {

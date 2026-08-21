@@ -20,7 +20,7 @@ export type FullTruthPipelineResult = {
   verificationScore: number;
 };
 
-export const TRUTH_PIPELINE_CACHE_VERSION = "7";
+export const TRUTH_PIPELINE_CACHE_VERSION = "9";
 import { screenContentWithAI, AiScreeningResult } from "@/lib/aiModeration";
 import { runGroundedFactCheck } from "@/lib/groundedFactCheck";
 import { runTavilyGrounding } from "@/lib/tavilyGrounding";
