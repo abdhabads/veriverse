@@ -3,12 +3,7 @@ import type { MongoClient } from "mongodb";
 import mongoose from "mongoose";
 
 const getMongoUri = () => {
-  const mongoUri =
-    process.env.MONGODB_URI ??
-    process.env.MONGO_URI ??
-    (process.env.NODE_ENV !== "production"
-      ? "mongodb://127.0.0.1:27017/veriverse"
-      : undefined);
+  const mongoUri = process.env.MONGODB_URI ?? process.env.MONGO_URI;
 
   if (!mongoUri) {
     throw new Error("Please define MONGO_URI or MONGODB_URI in your environment");
