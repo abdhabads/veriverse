@@ -20,7 +20,7 @@ export type FullTruthPipelineResult = {
   verificationScore: number;
 };
 
-export const TRUTH_PIPELINE_CACHE_VERSION = "9";
+export const TRUTH_PIPELINE_CACHE_VERSION = "10";
 import { screenContentWithAI, AiScreeningResult } from "@/lib/aiModeration";
 import { runGroundedFactCheck } from "@/lib/groundedFactCheck";
 import { runTavilyGrounding } from "@/lib/tavilyGrounding";
@@ -155,7 +155,7 @@ export async function evaluateContentTruthPipeline(
     aiDisabled
       ? Promise.resolve(emptyWebGrounding())
       : withRetry(
-          () => withTimeout(runGroundedFactCheck(content), 15_000, "Web grounding"),
+          () => withTimeout(runGroundedFactCheck(content), 25_000, "Web grounding"),
           { maxAttempts: 2, baseDelayMs: 1_000, label: "Web grounding" }
         ).catch(async (error) => {
           if (failOpen) {
