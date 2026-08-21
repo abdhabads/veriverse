@@ -13,7 +13,7 @@ import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 import VerificationBadge from "@/components/VerificationBadge";
 import { getErrorMessage } from "@/lib/apiClient";
 import { getExpertReviewReasons } from "@/lib/expertReview";
-import { getDisplayedAiLabel, shouldShowRawTrustStatus } from "@/lib/trustPresentation";
+import { getAiLabelTone, getDisplayedAiLabel, shouldShowRawTrustStatus } from "@/lib/trustPresentation";
 
 type Author = {
   _id: string;
@@ -394,7 +394,7 @@ export default function PostDetailPage({
                 />
 
                 {/* Secondary - moderation risk label, kept visually subordinate */}
-                <span className={displayedAiLabel === "contradicted" ? "vv-pill-red" : "vv-pill-blue"}>
+                <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(displayedAiLabel)}`}>
                   AI: {displayedAiLabel.replaceAll("_", " ")}
                 </span>
               </div>

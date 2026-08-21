@@ -38,6 +38,21 @@ export function getDisplayedAiLabel(input: TrustPresentationInput): DisplayAiLab
   }
 }
 
+export function getAiLabelTone(label: DisplayAiLabel): TrustTone {
+  switch (label) {
+    case "safe":
+      return "positive";
+    case "suspicious":
+    case "needs_review":
+      return "review";
+    case "high_risk":
+    case "contradicted":
+      return "negative";
+    default:
+      return "neutral";
+  }
+}
+
 // --- Trust Verdict ---
 
 // A disciplined 4-tone language shared across TrustVerdictBadge,

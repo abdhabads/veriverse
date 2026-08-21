@@ -17,7 +17,7 @@ import ActionIcon from "@/components/ActionIcons";
 import { api, getErrorMessage } from "@/lib/apiClient";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { getExpertReviewReasons } from "@/lib/expertReview";
-import { getDisplayedAiLabel, shouldShowRawTrustStatus } from "@/lib/trustPresentation";
+import { getAiLabelTone, getDisplayedAiLabel, shouldShowRawTrustStatus } from "@/lib/trustPresentation";
 import { usePageState } from "@/hooks/usePageState";
 import { runMutation } from "@/lib/runMutation";
 
@@ -612,21 +612,6 @@ export default function FeedPage() {
     }
   };
 
-  const getAiPillClass = (label?: Post["aiLabel"] | "contradicted") => {
-    switch (label) {
-      case "contradicted":
-        return "vv-pill-red";
-      case "high_risk":
-        return "vv-pill-red";
-      case "needs_review":
-        return "vv-pill-yellow";
-      case "suspicious":
-        return "vv-pill-purple";
-      default:
-        return "vv-pill-blue";
-    }
-  };
-
   const currentUserId = currentUser?._id || currentUser?.id;
 
   const verifiedPosts = posts.filter((p) => p.status === "verified");
@@ -938,7 +923,7 @@ export default function FeedPage() {
                       />
 
                       {post.aiLabel && (
-                        <span className={getAiPillClass(getDisplayedAiLabel(post))}>
+                        <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(getDisplayedAiLabel(post))}`}>
                           AI: {getDisplayedAiLabel(post).replaceAll("_", " ")}
                         </span>
                       )}
@@ -1072,7 +1057,7 @@ export default function FeedPage() {
                         />
 
                         {post.aiLabel && (
-                          <span className={getAiPillClass(getDisplayedAiLabel(post))}>
+                          <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(getDisplayedAiLabel(post))}`}>
                             AI: {getDisplayedAiLabel(post).replaceAll("_", " ")}
                           </span>
                         )}
