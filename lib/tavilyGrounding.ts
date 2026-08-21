@@ -17,7 +17,76 @@ function clampAdjustment(value: number): number {
   return Math.max(-25, Math.min(25, Math.round(value)));
 }
 
-function classifyStance(
+// Generic (non-medical) signals used as a fallback layer below, for claims
+// that don't hit any of the clinical/medical vocabulary above - e.g. political,
+// historical, or biographical facts. Kept conservative: only strong, unambiguous
+// falsity language counts as a contradiction, since a naive "former"/"resigned"
+// style negation list produces false contradictions on ordinary biographical
+// text (e.g. a bio mentioning a past role while confirming a current one).
+const GENERIC_CONTRADICTION_SIGNALS = [
+  "false", "fake", "hoax", "myth", "debunked", "denies", "denied",
+  "incorrect", "inaccurate", "not true", "isn't true", "misinformation",
+  "unfounded", "fabricated", "no evidence",
+];
+
+const GENERIC_CONFIRMATION_SIGNALS = [
+  "confirmed", "officially", "according to", "currently serving",
+  "incumbent", "sworn in", "elected", "official website", "verified",
+  "as of",
+];
+
+const CLAIM_KEYWORD_STOPWORDS = new Set([
+  "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "of",
+  "in", "on", "at", "to", "for", "and", "or", "but", "with", "as", "by",
+  "that", "this", "these", "those", "it", "its", "has", "have", "had",
+  "will", "would", "can", "could", "should", "from", "current", "currently",
+  "not", "does", "did", "than", "into", "about", "which", "who", "what",
+]);
+
+function extractClaimKeywords(claim: string): string[] {
+  return Array.from(
+    new Set(
+      claim
+        .toLowerCase()
+        .replace(/[^\w\s]/g, " ")
+        .split(/\s+/)
+        .map((w) => w.trim())
+        .filter((w) => w.length >= 3 && !CLAIM_KEYWORD_STOPWORDS.has(w))
+    )
+  );
+}
+
+// Topic-overlap fallback: for claims outside the medical vocabulary above,
+// decide stance from how much of the claim's subject matter the source
+// actually discusses, combined with strong confirm/deny language rather
+// than clinical phrasing. Runs only when the medical-specific signals found
+// nothing, so it never overrides a higher-precision clinical classification.
+function classifyByTopicOverlap(
+  bodyPortion: string,
+  claim: string
+): GroundingSource["stance"] {
+  const keywords = extractClaimKeywords(claim);
+  if (keywords.length === 0) return "unknown";
+
+  const matched = keywords.filter((k) => bodyPortion.includes(k));
+  const overlapRatio = matched.length / keywords.length;
+
+  if (overlapRatio < 0.4) return "unknown";
+
+  const hasContradiction = GENERIC_CONTRADICTION_SIGNALS.some((s) =>
+    bodyPortion.includes(s)
+  );
+  if (hasContradiction) return "contradicts";
+
+  const hasConfirmation = GENERIC_CONFIRMATION_SIGNALS.some((s) =>
+    bodyPortion.includes(s)
+  );
+  if (hasConfirmation || overlapRatio >= 0.6) return "supports";
+
+  return "context";
+}
+
+export function classifyStance(
   content: string,
   query: string
 ): GroundingSource["stance"] {
@@ -84,7 +153,12 @@ function classifyStance(
   if (contradictionScore > 0 || supportScore > 0) {
     return "context";
   }
-  return "unknown";
+
+  // No clinical/medical signal at all - fall back to generic topic-overlap
+  // classification so non-medical claims (political, historical, biographical,
+  // etc.) aren't stuck at "unknown" just because this source's vocabulary
+  // doesn't happen to use clinical phrasing.
+  return classifyByTopicOverlap(bodyPortion, query);
 }
 
 function deriveRiskAdjustment(sources: GroundingSource[]): number {
