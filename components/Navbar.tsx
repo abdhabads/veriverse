@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/apiClient";
 import { clearAuth } from "@/lib/clientAuth";
+import Logo from "@/components/Logo";
 
 type Role = "user" | "admin" | "expert" | null;
 
@@ -72,7 +73,10 @@ export default function Navbar() {
         <div className="flex items-center justify-between gap-4">
           <div className="cursor-pointer" onClick={() => go("/feed")}>
             <p className="vv-eyebrow mb-2">Truth Graph Network</p>
-            <h1 className="text-xl sm:text-2xl font-bold leading-none">VeriVerse</h1>
+            <div className="flex items-center gap-2">
+              <Logo size={26} />
+              <h1 className="text-xl sm:text-2xl font-bold leading-none">VeriVerse</h1>
+            </div>
             <p className="text-[11px] sm:text-xs text-orange-100/80 mt-1">
               Verify signals. Track trust. Escalate what matters.
             </p>

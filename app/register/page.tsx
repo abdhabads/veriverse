@@ -4,6 +4,7 @@ import { useState } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import Toast from "@/components/Toast";
+import Logo from "@/components/Logo";
 import { getErrorMessage } from "@/lib/apiClient";
 
 export default function RegisterPage() {
@@ -38,6 +39,10 @@ export default function RegisterPage() {
       <div className="vv-auth-shell">
         <div className="vv-auth-panel hidden lg:flex lg:flex-col lg:justify-between">
           <div>
+            <div className="flex items-center gap-2.5 mb-8">
+              <Logo size={34} />
+              <span className="text-lg font-bold tracking-tight">VeriVerse</span>
+            </div>
             <p className="vv-eyebrow mb-4 bg-white/10 text-white">Create your operator profile</p>
             <h1 className="text-5xl font-bold leading-tight mb-4 max-w-xl">
               Join the network that treats verification like infrastructure.
@@ -145,6 +150,16 @@ export default function RegisterPage() {
               >
                 Login
               </button>
+            </div>
+
+            <div className="mt-6 flex items-center gap-2 border-t border-veriverse-border pt-5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0 text-emerald-600">
+                <path d="M12 2L4 6V12C4 17 7.6 21.4 12 22C16.4 21.4 20 17 20 12V6L12 2Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                <path d="M9 12L11 14L15.5 9.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="text-[11px] text-slate-500">
+                Every session is protected by grounded, source-checked moderation.
+              </span>
             </div>
           </div>
         </div>

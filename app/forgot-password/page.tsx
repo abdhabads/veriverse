@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import Toast from "@/components/Toast";
+import Logo from "@/components/Logo";
 import { getErrorMessage } from "@/lib/apiClient";
 
 export default function ForgotPasswordPage() {
@@ -39,6 +40,10 @@ export default function ForgotPasswordPage() {
       <div className="vv-auth-shell">
         <div className="vv-auth-panel hidden lg:flex lg:flex-col lg:justify-between">
           <div>
+            <div className="flex items-center gap-2.5 mb-8">
+              <Logo size={34} />
+              <span className="text-lg font-bold tracking-tight">VeriVerse</span>
+            </div>
             <p className="vv-eyebrow mb-4 bg-white/10 text-white">Account recovery</p>
             <h1 className="text-5xl font-bold leading-tight mb-4 max-w-xl">
               Regain access without bypassing the trust controls.
