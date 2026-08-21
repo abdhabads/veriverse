@@ -2,7 +2,14 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 require("dotenv").config({ path: ".env.local" });
 
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI = process.env.MONGODB_URI ?? process.env.MONGO_URI;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@veriverse.com";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+if (!ADMIN_PASSWORD) {
+  console.error("Please set ADMIN_PASSWORD in your environment before running this script");
+  process.exit(1);
+}
 
 const UserSchema = new mongoose.Schema(
   {
@@ -21,15 +28,16 @@ async function run() {
   try {
     await mongoose.connect(MONGO_URI);
 
-    const email = "admin@veriverse.com";
+    const email = ADMIN_EMAIL;
     const existing = await User.findOne({ email });
 
     if (existing) {
       existing.role = "admin";
+      existing.password = await bcrypt.hash(ADMIN_PASSWORD, 10);
       await existing.save();
-      console.log("Existing user promoted to admin");
+      console.log("Existing user promoted to admin and password reset");
     } else {
-      const hashedPassword = await bcrypt.hash("Admin12345!", 10);
+      const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
 
       await User.create({
         username: "admin",
