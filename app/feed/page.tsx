@@ -974,115 +974,66 @@ export default function FeedPage() {
                     </div>
                   )}
 
-                  <div className="vv-post-stat-grid">
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/posts/${post._id}`)}
-                      className="vv-post-panel text-left transition hover:border-veriverse-purple/40 hover:bg-white"
-                    >
-                      <p className="text-xs text-slate-500 mb-1">Vote Summary</p>
-                      <p className="text-sm text-slate-700">
-                        Accurate: {post.accurateVotes} • Inaccurate:{" "}
-                        {post.inaccurateVotes}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Weighted Trust:{" "}
-                        {Number(post.accurateWeight || 0).toFixed(1)} accurate /{" "}
-                        {Number(post.inaccurateWeight || 0).toFixed(1)} inaccurate
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/posts/${post._id}`)}
-                      className="vv-post-panel-accent text-left transition hover:border-veriverse-purple/40 hover:bg-amber-50/70"
-                    >
-                      <p className="text-xs text-slate-500 mb-1">Moderation</p>
-                      <p className="text-sm text-slate-700">
+                  <div className="vv-post-panel mb-4">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2">
+                      <span className="text-sm text-slate-700">
                         Risk Score: {Number(post.aiRiskScore || 0)}
-                      </p>
-                      <div className="text-sm text-slate-700 mt-1">
-                        <VerificationBadge score={post.verificationScore} showScore={true} />
+                      </span>
+                      <VerificationBadge score={post.verificationScore} showScore={true} />
+                    </div>
+
+                    <p className="text-xs text-slate-500 mb-1">
+                      {post.accurateVotes} accurate / {post.inaccurateVotes} inaccurate
+                      {" "}&middot; weighted {Number(post.accurateWeight || 0).toFixed(1)} / {Number(post.inaccurateWeight || 0).toFixed(1)}
+                    </p>
+
+                    {post.needsExpertReview && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs font-medium text-veriverse-purple">
+                          Expert review required
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {getExpertReviewReasons(
+                            post.content,
+                            post.hashtags || [],
+                            Number(post.aiRiskScore || 0),
+                            post.groundingStatus || "not_checked",
+                            post.groundingSources || []
+                          ).join("; ") || "Sensitive content requires a human check."}
+                        </p>
                       </div>
+                    )}
 
-                      {post.needsExpertReview && (
-                        <div className="mt-1 space-y-1">
-                          <p className="text-xs text-veriverse-purple">
-                            Expert review required
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {getExpertReviewReasons(
-                              post.content,
-                              post.hashtags || [],
-                              Number(post.aiRiskScore || 0),
-                              post.groundingStatus || "not_checked",
-                              post.groundingSources || []
-                            ).join("; ") || "Sensitive content requires a human check."}
-                          </p>
-                          {getDisplayedAiLabel(post) === "safe" && (
-                            <p className="text-xs text-slate-500">
-                              AI safe means low model risk. Human review can still be required for sensitive claims.
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {post.expertDecision && (
-                        <p className="text-xs text-veriverse-purple mt-1">
-                          Expert decision: {post.expertDecision}
-                        </p>
-                      )}
-
-                      {post.hasActiveAppeal && (
-                        <p className="text-xs text-veriverse-purple mt-1">
-                          Active appeal in progress
-                        </p>
-                      )}
-                    </button>
-                  </div>
-
-                  {(post.aiLabel && getDisplayedAiLabel(post) !== "safe") ||
-                  (Array.isArray(post.moderationReasons) && post.moderationReasons.length > 0) ? (
-                    <div className="vv-post-panel-accent mb-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">
-                          AI Signals
-                        </p>
-                        <TrustVerdictBadge
-                          status={post.status}
-                          expertDecision={post.expertDecision}
-                          verificationScore={post.verificationScore}
-                          contradictionCount={post.contradictionCount}
-                          groundingSources={post.groundingSources}
-                        />
-
-                        {post.aiLabel && (
-                          <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(getDisplayedAiLabel(post))}`}>
-                            AI: {getDisplayedAiLabel(post).replaceAll("_", " ")}
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-sm text-slate-700 mb-2">
-                        Risk score: {Number(post.aiRiskScore || 0)}
+                    {post.expertDecision && (
+                      <p className="text-xs text-veriverse-purple mt-1">
+                        Expert decision: {post.expertDecision}
                       </p>
-                      <p className="text-sm text-slate-700 mb-2">
-                        <VerificationBadge score={post.verificationScore} showScore={true} />
-                      </p>
+                    )}
 
-                      {Array.isArray(post.moderationReasons) && post.moderationReasons.length > 0 ? (
+                    {post.hasActiveAppeal && (
+                      <p className="text-xs text-veriverse-purple mt-1">
+                        Active appeal in progress
+                      </p>
+                    )}
+
+                    {Array.isArray(post.moderationReasons) && post.moderationReasons.length > 0 && (
+                      <div className="mt-3">
                         <ModerationReasonList
                           reasons={post.moderationReasons}
                           textLimit={4}
                           sourceLimit={2}
                         />
-                      ) : (
-                        <p className="text-xs text-slate-500">
-                          No specific AI reasons were returned for this post.
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/posts/${post._id}`)}
+                      className="vv-link-accent mt-3 text-xs font-medium"
+                    >
+                      View full analysis &rarr;
+                    </button>
+                  </div>
 
                   <div className="mb-4">
                     <button
