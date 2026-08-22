@@ -11,7 +11,7 @@ import { usePageState } from "@/hooks/usePageState";
 import {
   fetchMyProfile,
 } from "@/lib/profileTrustClient";
-import { getErrorMessage } from "@/lib/apiClient";
+import { api, getErrorMessage } from "@/lib/apiClient";
 
 type UserProfile = {
   _id: string;
@@ -49,6 +49,7 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
 
   useEffect(() => {
     loadProfilePage();
@@ -85,6 +86,24 @@ export default function ProfilePage() {
         return <span className="vv-pill-red">Banned</span>;
       default:
         return <span className="vv-pill-gray">Unknown</span>;
+    }
+  }
+
+  async function deleteOwnPost(postId: string) {
+    const confirmed = window.confirm("Are you sure you want to delete this post?");
+    if (!confirmed) return;
+
+    setDeletingPostId(postId);
+    clearMessage();
+
+    try {
+      await api.delete(`/posts/${postId}`);
+      setPosts((prev) => prev.filter((post) => String(post._id) !== String(postId)));
+      showSuccess("Post deleted successfully.");
+    } catch (error: unknown) {
+      showError(getErrorMessage(error, "Failed to delete post"));
+    } finally {
+      setDeletingPostId(null);
     }
   }
 
@@ -249,6 +268,15 @@ export default function ProfilePage() {
                     <p className="text-xs text-slate-500">
                       Trust Version: {Number(post.trustDecisionVersion || 1)}
                     </p>
+                    <div className="mt-3">
+                      <button
+                        onClick={() => deleteOwnPost(post._id)}
+                        disabled={deletingPostId === post._id}
+                        className="vv-btn-danger"
+                      >
+                        {deletingPostId === post._id ? "Deleting..." : "Delete Post"}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

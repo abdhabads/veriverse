@@ -988,8 +988,9 @@ export default function FeedPage() {
                       </div>
                     )}
 
-                    {/* Moderate/Manage Tab: Only for admin and expert, not user */}
-                    {(currentUser?.role === "admin" || currentUser?.role === "expert") && (
+                    {/* Manage tab: admins/experts and post owners can manage posts */}
+                    {((currentUser?.role === "admin" || currentUser?.role === "expert") ||
+                      currentUserId === post.author?._id) && (
                       <div className="vv-post-action-cluster">
                         <p className="vv-post-action-title">Moderate And Manage</p>
                         <div className="space-y-3">
@@ -1018,7 +1019,8 @@ export default function FeedPage() {
                               </button>
                             </div>
                           )}
-                          {currentUserId !== post.author?._id && (
+                          {currentUserId !== post.author?._id &&
+                            (currentUser?.role === "admin" || currentUser?.role === "expert") && (
                             <>
                               <div className="vv-post-action-grid xl:grid-cols-2">
                                 <button

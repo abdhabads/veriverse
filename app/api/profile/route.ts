@@ -5,6 +5,7 @@ import Post from "@/models/Post";
 import { getUserFromRequest } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
+import { escapeRegexLiteral, isValidUsername } from "@/lib/validation";
 
 const MAX_AVATAR_DATA_URL_LENGTH = 800_000;
 
@@ -99,8 +100,20 @@ export async function PATCH(req: Request) {
     const nextAvatarUrl = typeof avatarUrl === "string" ? avatarUrl.trim() : "";
 
     if (nextUsername && nextUsername !== user.username) {
+      if (!isValidUsername(nextUsername)) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Username must be 3-30 characters and can only include letters, numbers, underscores, dots, or hyphens.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const usernameRegex = new RegExp(`^${escapeRegexLiteral(nextUsername)}$`, "i");
       const existing = await User.findOne({
-        username: nextUsername,
+        username: usernameRegex,
         _id: { $ne: user._id },
       });
 

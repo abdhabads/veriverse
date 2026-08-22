@@ -4,7 +4,13 @@ import bcrypt from "bcryptjs";
 import { verifyCaptchaToken } from "@/lib/captcha";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
-import { cleanString, isStrongEnoughPassword, isValidEmail } from "@/lib/validation";
+import {
+  cleanString,
+  escapeRegexLiteral,
+  isStrongEnoughPassword,
+  isValidEmail,
+  isValidUsername,
+} from "@/lib/validation";
 import { ok, fail } from "@/lib/apiResponse";
 
 export async function POST(req: Request) {
@@ -35,6 +41,13 @@ export async function POST(req: Request) {
       return fail("Please enter a valid email address.", 400);
     }
 
+    if (!isValidUsername(username)) {
+      return fail(
+        "Username must be 3-30 characters and can only include letters, numbers, underscores, dots, or hyphens.",
+        400
+      );
+    }
+
     if (!isStrongEnoughPassword(password)) {
       return fail("Password must be at least 8 characters.", 400);
     }
@@ -44,8 +57,9 @@ export async function POST(req: Request) {
       return fail(captchaCheck.message || "Captcha verification failed", 400);
     }
 
+    const usernameRegex = new RegExp(`^${escapeRegexLiteral(username)}$`, "i");
     const existingUser = await User.findOne({
-      $or: [{ email }, { username }],
+      $or: [{ email }, { username: usernameRegex }],
     });
 
     if (existingUser) {

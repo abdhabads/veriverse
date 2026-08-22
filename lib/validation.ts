@@ -44,3 +44,12 @@ export function isValidEmail(email: string): boolean {
 export function isStrongEnoughPassword(password: string): boolean {
   return password.length >= 8;
 }
+
+export function isValidUsername(username: string): boolean {
+  // 3-30 chars, letters/numbers/underscore/dot/hyphen
+  return /^[a-zA-Z0-9_.-]{3,30}$/.test(username);
+}
+
+export function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
