@@ -613,13 +613,147 @@ export default function FeedPage() {
   };
 
   const currentUserId = currentUser?._id || currentUser?.id;
+  const verifiedPosts = posts.filter((post) => post.status === "verified");
+  const trendingPosts = [...posts].sort(
+    (a, b) =>
+      (Number(b.accurateVotes || 0) + Number(b.inaccurateVotes || 0)) -
+      (Number(a.accurateVotes || 0) + Number(a.inaccurateVotes || 0))
+  );
 
   return (
     <PageWrapper
       title="Feed"
       subtitle="Discover verified information and contribute to truth."
     >
-        <div className="max-w-2xl mx-auto space-y-6">
+      <div className="grid lg:grid-cols-[1.08fr_2.35fr] gap-4 sm:gap-6">
+        <div className="space-y-6">
+          <div className="vv-card vv-surface-accent p-5">
+            <p className="vv-eyebrow mb-3 bg-white/10 text-white">Profile Snapshot</p>
+            <h2 className="text-2xl font-bold mb-3 text-white">Your Identity</h2>
+
+            <div className="flex items-center gap-4 mb-4">
+              {currentUser?.avatarUrl ? (
+                <button
+                  type="button"
+                  onClick={() => router.push("/profile")}
+                  className="rounded-full transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-white/40"
+                  aria-label="Open your profile"
+                >
+                  <Image
+                    src={currentUser.avatarUrl}
+                    alt={currentUser.username || "User"}
+                    width={56}
+                    height={56}
+                    unoptimized
+                    className="h-14 w-14 rounded-full border border-white/15 object-cover"
+                  />
+                </button>
+              ) : currentUser?.username ? (
+                <button
+                  type="button"
+                  onClick={() => router.push("/profile")}
+                  className="w-14 h-14 rounded-full bg-white/12 border border-white/15 flex items-center justify-center text-sm text-orange-50/80 transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-white/40"
+                  aria-label="Open your profile"
+                >
+                  {currentUser.username.slice(0, 1).toUpperCase()}
+                </button>
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-white/12 border border-white/15" />
+              )}
+
+              <div>
+                <button
+                  type="button"
+                  onClick={() => router.push("/profile")}
+                  className="font-semibold text-white transition hover:underline focus:outline-none"
+                >
+                  {currentUser?.username || "User"}
+                </button>
+                <p className="text-sm text-orange-50/72">
+                  Reputation: {currentUser?.reputation ?? 0}
+                </p>
+                <p className="text-sm text-orange-50/72">
+                  Role: {currentUser?.role || "user"}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="vv-hero-stat bg-white/10 border-white/12">
+                <p className="text-xs uppercase tracking-[0.2em] text-orange-100/70">Reward Points</p>
+                <p className="text-xl font-bold text-white mt-2">
+                  {currentUser?.rewardPoints || 0}
+                </p>
+              </div>
+              <div className="vv-hero-stat bg-white/10 border-white/12">
+                <p className="text-xs uppercase tracking-[0.2em] text-orange-100/70">Trust Level</p>
+                <p className="text-xl font-bold text-white mt-2">
+                  {currentUser?.reputation ?? 0}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="vv-card p-5">
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-veriverse-purple">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
+                <path d="M12 8V12L15 14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              How VeriVerse Works
+            </h2>
+            <ul className="list-disc pl-6 space-y-2 text-gray-800 text-base">
+              <li>AI checks content risk</li>
+              <li>Evidence is gathered</li>
+              <li>Community votes</li>
+              <li>Experts review when needed</li>
+            </ul>
+          </div>
+
+          <div className="vv-card p-5">
+            <p className="vv-eyebrow mb-3">Community Signal</p>
+            <h2 className="vv-section-title mb-3">Verified Highlights</h2>
+            <div className="space-y-3">
+              {verifiedPosts.length === 0 ? (
+                <p className="vv-subtitle">No verified posts yet.</p>
+              ) : (
+                verifiedPosts.slice(0, 5).map((post) => (
+                  <div key={post._id} className="vv-card-soft p-3">
+                    <p className="text-sm font-medium text-veriverse-dark">
+                      {post.author?.username}
+                    </p>
+                    <p className="text-sm text-slate-700 line-clamp-2">
+                      {post.content}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="vv-card p-5">
+            <p className="vv-eyebrow mb-3">Momentum</p>
+            <h2 className="vv-section-title mb-3">Trending</h2>
+            <div className="space-y-3">
+              {trendingPosts.length === 0 ? (
+                <p className="vv-subtitle">No trending posts yet.</p>
+              ) : (
+                trendingPosts.slice(0, 5).map((post) => (
+                  <div key={post._id} className="vv-card-soft p-3">
+                    <p className="text-sm font-medium text-veriverse-dark">
+                      {post.author?.username}
+                    </p>
+                    <p className="text-sm text-slate-700 line-clamp-2">
+                      {post.content}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-2xl mx-auto w-full space-y-6 lg:max-w-none">
             <div className="vv-card p-5">
               <SectionHeader
                 title="Discovery Filters"
@@ -1166,6 +1300,7 @@ export default function FeedPage() {
             </div>
             )}
         </div>
+      </div>
     </PageWrapper>
   );
 }
