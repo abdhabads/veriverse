@@ -40,9 +40,9 @@ export default function ForgotPasswordPage() {
       <div className="vv-auth-shell">
         <div className="vv-auth-panel hidden lg:flex lg:flex-col lg:justify-between">
           <div>
-            <div className="flex items-center gap-2.5 mb-8">
-              <Logo size={34} />
-              <span className="text-lg font-bold tracking-tight">VeriVerse</span>
+            <div className="mb-8 flex items-center gap-1.5">
+              <Logo size={34} dark />
+              <span className="text-lg font-bold tracking-tight">eriVerse</span>
             </div>
             <p className="vv-eyebrow mb-4 bg-white/10 text-white">Account recovery</p>
             <h1 className="text-5xl font-bold leading-tight mb-4 max-w-xl">

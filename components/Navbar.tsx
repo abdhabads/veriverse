@@ -73,9 +73,9 @@ export default function Navbar() {
         <div className="flex items-center justify-between gap-4">
           <div className="cursor-pointer" onClick={() => go("/feed")}>
             <p className="vv-eyebrow mb-2">Truth Graph Network</p>
-            <div className="flex items-center gap-2">
-              <Logo size={26} />
-              <h1 className="text-xl sm:text-2xl font-bold leading-none">VeriVerse</h1>
+            <div className="flex items-center gap-1">
+              <Logo size={26} dark />
+              <h1 className="text-xl sm:text-2xl font-bold leading-none">eriVerse</h1>
             </div>
             <p className="text-[11px] sm:text-xs text-orange-100/80 mt-1">
               Verify signals. Track trust. Escalate what matters.

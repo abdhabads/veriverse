@@ -15,6 +15,11 @@ const displayFont = Space_Grotesk({
 export const metadata: Metadata = {
   title: "VeriVerse",
   description: "Verify. Trust. Earn.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

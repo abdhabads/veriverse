@@ -1,32 +1,23 @@
-// components/Logo.tsx
-// Shared brand mark: a coral-gradient badge with a checkmark, used
-// wherever the VeriVerse wordmark appears (navbar, auth screens).
-
 type Props = {
   size?: number;
+  dark?: boolean;
 };
 
-export default function Logo({ size = 30 }: Props) {
+export default function Logo({ size = 30, dark = false }: Props) {
+  const stroke = dark ? "#F5EEE2" : "#0D1B2A";
+
   return (
-    <div
-      style={{ width: size, height: size, borderRadius: size * 0.3 }}
-      className="flex shrink-0 items-center justify-center bg-gradient-to-br from-veriverse-purple to-[#f48b5d]"
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0 -mr-1"
     >
-      <svg
-        width={size * 0.55}
-        height={size * 0.55}
-        viewBox="0 0 24 24"
-        fill="none"
-        aria-hidden="true"
-      >
-        <path
-          d="M4 12.5L9.5 18L20 6"
-          stroke="white"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
+      <rect width="100" height="100" rx="22" fill="#E8623F" />
+      <path d="M 26 46 L 40 62" stroke={stroke} strokeWidth="9.5" strokeLinecap="round" fill="none" />
+      <path d="M 40 62 L 76 30" stroke="#0D1B2A" strokeWidth="9.5" strokeLinecap="round" fill="none" />
+    </svg>
   );
 }

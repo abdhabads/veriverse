@@ -9,16 +9,13 @@ export default function Navbar() {
       className="sticky top-0 z-40 flex items-center justify-between px-6 py-4"
       style={{ background: "#0D1B2A" }}
     >
-      <Link href="/" className="flex items-center gap-2">
-        <div
-          className="flex h-8 w-8 items-center justify-center rounded-lg"
-          style={{ background: "#E8623F" }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3}>
-            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <span className="text-lg font-bold text-white">VeriVerse</span>
+      <Link href="/" className="flex items-center gap-1">
+        <svg width="28" height="28" viewBox="0 0 100 100" fill="none" aria-hidden="true" style={{ marginRight: "-2px" }}>
+          <rect width="100" height="100" rx="22" fill="#E8623F" />
+          <path d="M 26 46 L 40 62" stroke="#F5EEE2" strokeWidth="9.5" strokeLinecap="round" fill="none" />
+          <path d="M 40 62 L 76 30" stroke="#0D1B2A" strokeWidth="9.5" strokeLinecap="round" fill="none" />
+        </svg>
+        <span className="text-lg font-bold text-white">eriVerse</span>
       </Link>
 
       <nav className="hidden items-center gap-6 sm:flex">
