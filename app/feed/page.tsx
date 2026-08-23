@@ -3,21 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { logEvent } from "@/lib/logger";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PageWrapper from "@/components/PageWrapper";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
 import SectionHeader from "@/components/SectionHeader";
-import ModerationReasonList from "@/components/ModerationReasonList";
 import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
 import TrustVerdictBadge from "@/components/TrustVerdictBadge";
-import VerificationBadge from "@/components/VerificationBadge";
 import ActionIcon from "@/components/ActionIcons";
 import { api, getErrorMessage } from "@/lib/apiClient";
 import { requireAuthenticated } from "@/lib/frontendAccess";
-import { getExpertReviewReasons } from "@/lib/expertReview";
-import { getAiLabelTone, getDisplayedAiLabel, shouldShowRawTrustStatus } from "@/lib/trustPresentation";
 import { usePageState } from "@/hooks/usePageState";
 import { runMutation } from "@/lib/runMutation";
 
@@ -92,6 +89,47 @@ type Relation = {
     _id: string;
   };
 };
+
+function formatRelativeTime(createdAt?: string) {
+  if (!createdAt) {
+    return "Just now";
+  }
+
+  const timestamp = new Date(createdAt).getTime();
+  if (Number.isNaN(timestamp)) {
+    return "Just now";
+  }
+
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < 60_000) {
+    return "Just now";
+  }
+
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) {
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  }
+
+  return new Date(createdAt).toLocaleDateString();
+}
+
+function getFeedCategory(post: Post) {
+  if (post.hashtags?.length) {
+    return `#${post.hashtags[0]}`;
+  }
+
+  return post.status.replaceAll("_", " ");
+}
 
 export default function FeedPage() {
   const router = useRouter();
@@ -594,24 +632,6 @@ export default function FeedPage() {
     });
   };
 
-  const getStatusPillClass = (status: Post["status"]) => {
-    switch (status) {
-      case "verified":
-        return "vv-pill-green";
-      case "false":
-        return "vv-pill-red";
-      case "disputed":
-        return "vv-pill-yellow";
-      case "flagged":
-        return "vv-pill-red";
-      case "under_expert_review":
-      case "under_appeal_review":
-        return "vv-pill-purple";
-      default:
-        return "vv-pill-gray";
-    }
-  };
-
   const currentUserId = currentUser?._id || currentUser?.id;
   const verifiedPosts = posts.filter((post) => post.status === "verified");
   const trendingPosts = [...posts].sort(
@@ -867,50 +887,36 @@ export default function FeedPage() {
             <div className="space-y-5">
               {filteredPosts.map((post) => (
                 <div key={post._id} data-testid="post-card" className="vv-card p-5 sm:p-6">
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <div className="flex items-center gap-3">
-                      {post.author?.avatarUrl ? (
-                        <Image
-                          src={post.author.avatarUrl}
-                          alt={post.author.username}
-                          width={48}
-                          height={48}
-                          unoptimized
-                          className="w-12 h-12 rounded-full object-cover border border-slate-200"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs text-slate-500">
-                          {post.author?.username?.slice(0, 1)?.toUpperCase()}
-                        </div>
-                      )}
+                  <div className="vv-post-panel p-5 sm:p-6">
+                    <div className="mb-4 flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        {post.author?.avatarUrl ? (
+                          <Image
+                            src={post.author.avatarUrl}
+                            alt={post.author.username}
+                            width={40}
+                            height={40}
+                            unoptimized
+                            className="h-10 w-10 rounded-full object-cover border border-slate-200"
+                          />
+                        ) : (
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-veriverse-border bg-white/70 text-xs text-slate-500">
+                            {post.author?.username?.slice(0, 1)?.toUpperCase()}
+                          </div>
+                        )}
 
-                      <div>
-                        <button
-                          onClick={() => router.push(`/u/${post.author?.username}`)}
-                          className="font-semibold text-left hover:underline text-veriverse-dark"
-                        >
-                          {post.author?.username}
-                        </button>
-                        <p className="text-xs text-slate-500">
-                          Reputation: {post.author?.reputation ?? 0}
-                        </p>
-
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {(post.author?.badges || []).slice(0, 2).map((badge) => (
-                            <span key={badge} className="vv-pill-blue">
-                              {badge}
-                            </span>
-                          ))}
+                        <div>
+                          <button
+                            onClick={() => router.push(`/u/${post.author?.username}`)}
+                            className="font-semibold text-left hover:underline text-veriverse-dark"
+                          >
+                            {post.author?.username}
+                          </button>
+                          <p className="text-xs text-slate-500">
+                            {formatRelativeTime(post.createdAt)} · {getFeedCategory(post)}
+                          </p>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      {shouldShowRawTrustStatus(post.status) && (
-                        <span className={getStatusPillClass(post.status)}>
-                          {post.status.replaceAll("_", " ")}
-                        </span>
-                      )}
 
                       <TrustVerdictBadge
                         status={post.status}
@@ -919,135 +925,72 @@ export default function FeedPage() {
                         contradictionCount={post.contradictionCount}
                         groundingSources={post.groundingSources}
                       />
-
-                      {post.aiLabel && (
-                        <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(getDisplayedAiLabel(post))}`}>
-                          AI: {getDisplayedAiLabel(post).replaceAll("_", " ")}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {editingPostId === post._id ? (
-                    <div className="mb-4">
-                      <textarea
-                        className="vv-textarea mb-2"
-                        rows={3}
-                        value={editContent}
-                        onChange={(e) => setEditContent(e.target.value)}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => saveEdit(post._id)}
-                          className="vv-btn-primary"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingPostId(null);
-                            setEditContent("");
-                          }}
-                          className="vv-btn-secondary"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-slate-800 mb-3 text-[15px] leading-7 sm:text-base">{post.content}</p>
-                  )}
-
-                  {(post.hashtags || []).length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {post.hashtags!.map((tag) => (
-                        <button
-                          key={tag}
-                          onClick={() => router.push(`/topics/${tag}`)}
-                          className="vv-pill-blue"
-                        >
-                          #{tag}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="vv-post-panel mb-4">
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2">
-                      <span className="text-sm text-slate-700">
-                        Risk Score: {Number(post.aiRiskScore || 0)}
-                      </span>
-                      <VerificationBadge score={post.verificationScore} showScore={true} />
                     </div>
 
-                    <p className="text-xs text-slate-500 mb-1">
-                      {post.accurateVotes} accurate / {post.inaccurateVotes} inaccurate
-                      {" "}&middot; weighted {Number(post.accurateWeight || 0).toFixed(1)} / {Number(post.inaccurateWeight || 0).toFixed(1)}
-                    </p>
-
-                    {post.needsExpertReview && (
-                      <div className="mt-2 space-y-1">
-                        <p className="text-xs font-medium text-veriverse-purple">
-                          Expert review required
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {getExpertReviewReasons(
-                            post.content,
-                            post.hashtags || [],
-                            Number(post.aiRiskScore || 0),
-                            post.groundingStatus || "not_checked",
-                            post.groundingSources || []
-                          ).join("; ") || "Sensitive content requires a human check."}
-                        </p>
-                      </div>
-                    )}
-
-                    {post.expertDecision && (
-                      <p className="text-xs text-veriverse-purple mt-1">
-                        Expert decision: {post.expertDecision}
-                      </p>
-                    )}
-
-                    {post.hasActiveAppeal && (
-                      <p className="text-xs text-veriverse-purple mt-1">
-                        Active appeal in progress
-                      </p>
-                    )}
-
-                    {Array.isArray(post.moderationReasons) && post.moderationReasons.length > 0 && (
-                      <div className="mt-3">
-                        <ModerationReasonList
-                          reasons={post.moderationReasons}
-                          textLimit={4}
-                          sourceLimit={2}
+                    {editingPostId === post._id ? (
+                      <div className="mb-4">
+                        <textarea
+                          className="vv-textarea mb-2"
+                          rows={3}
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
                         />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => saveEdit(post._id)}
+                            className="vv-btn-primary"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingPostId(null);
+                              setEditContent("");
+                            }}
+                            className="vv-btn-secondary"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
+                    ) : (
+                      <p className="text-slate-800 mb-4 text-[15px] leading-7 sm:text-base">
+                        {post.content}
+                      </p>
                     )}
+
+                    <p className="text-xs text-slate-500">
+                      ☆ Risk {Number(post.aiRiskScore || 0)} / 100 ·{" "}
+                      {Number(post.verificationScore || 0)}% verification confidence
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {Number(post.groundingSources?.length || 0)} source
+                      {Number(post.groundingSources?.length || 0) === 1 ? "" : "s"} ·{" "}
+                      {Number(post.supportCount || 0)} support ·{" "}
+                      {Number(post.contradictionCount || 0)} contradict
+                    </p>
 
                     <button
                       type="button"
-                      onClick={() => router.push(`/posts/${post._id}`)}
-                      className="vv-link-accent mt-3 text-xs font-medium"
+                      onClick={() =>
+                        setExpandedEvidence((prev) => ({
+                          ...prev,
+                          [post._id]: !prev[post._id],
+                        }))
+                      }
+                      className="mt-4 w-full rounded-[24px] border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white"
                     >
-                      View full analysis &rarr;
-                    </button>
-                  </div>
-
-                  <div className="mb-4">
-                    <button
-                      onClick={() => setExpandedEvidence((prev) => ({
-                        ...prev,
-                        [post._id]: !prev[post._id],
-                      }))}
-                      className="w-full text-left px-3 py-2.5 rounded-2xl border border-veriverse-border bg-white/60 hover:bg-white transition-colors flex items-center justify-between"
-                    >
-                      <span className="text-sm font-medium text-veriverse-dark">
-                        Grounded Evidence {post.groundingSources?.length ? `(${post.groundingSources.length})` : ""}
-                      </span>
-                      <ActionIcon
-                        name="chevronDown"
-                        className={`text-veriverse-dark/50 transition-transform ${expandedEvidence[post._id] ? "rotate-180" : ""}`}
-                      />
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-medium text-veriverse-dark">
+                          Grounding evidence
+                        </span>
+                        <ActionIcon
+                          name="chevronDown"
+                          className={`text-veriverse-dark/50 transition-transform ${
+                            expandedEvidence[post._id] ? "rotate-180" : ""
+                          }`}
+                        />
+                      </div>
                     </button>
 
                     {expandedEvidence[post._id] && (
@@ -1065,6 +1008,13 @@ export default function FeedPage() {
                         />
                       </div>
                     )}
+
+                    <Link
+                      href={`/posts/${post._id}`}
+                      className="vv-link-accent mt-3 inline-flex text-xs font-medium"
+                    >
+                      View full analysis &rarr;
+                    </Link>
                   </div>
 
                   <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-3 mb-4">

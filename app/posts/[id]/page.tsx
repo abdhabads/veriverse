@@ -324,7 +324,7 @@ export default function PostDetailPage({
   return (
     <PageWrapper
       title="Post Detail"
-      subtitle="Review the full claim context, moderation signal chain, and discussion thread."
+      subtitle="Review the full analysis, grounded evidence links, and discussion thread."
     >
       <div className="vv-action-row mb-4">
         <button onClick={() => router.push("/feed")} className="vv-btn-secondary">
