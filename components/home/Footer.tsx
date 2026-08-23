@@ -23,7 +23,7 @@ export default function Footer() {
       <div className="mb-3">
         Support: <a href="mailto:admin@veriverse.io" className="text-white underline underline-offset-2 hover:text-orange-200">admin@veriverse.io</a>
       </div>
-      VeriVerse has been built since 2023 by Deekay Universal Alliance Nig Ltd
+      VeriVerse a product of Deekay Universal Alliance Nig Ltd ©2024
     </footer>
   );
 }
