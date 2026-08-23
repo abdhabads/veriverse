@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import Toast from "@/components/Toast";
@@ -13,17 +13,29 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("error");
 
-  const handleRegister = async () => {
+  const handleRegister = async (event?: FormEvent) => {
+    event?.preventDefault();
+
     if (!agreedToTerms) {
       setMessageType("error");
       setMessage("You must agree to the Terms of Service and Privacy Policy to continue.");
       return;
     }
+
+    if (password !== confirmPassword) {
+      setMessageType("error");
+      setMessage("Passwords do not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
 
     try {
       await axios.post("/api/register", {
@@ -40,6 +52,8 @@ export default function RegisterPage() {
     } catch (error: unknown) {
       setMessageType("error");
       setMessage(getErrorMessage(error, "Registration failed"));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -83,7 +97,7 @@ export default function RegisterPage() {
               Join the trust-driven network with a profile built for evidence-first conversation.
             </p>
 
-            <div className="space-y-4">
+            <form onSubmit={handleRegister} className="space-y-4">
               <div>
                 <label className="vv-label block mb-1" htmlFor="register-username">
                   Username
@@ -95,6 +109,7 @@ export default function RegisterPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
+                  required
                 />
               </div>
 
@@ -106,9 +121,11 @@ export default function RegisterPage() {
                   id="register-email"
                   className="vv-input"
                   placeholder="you@example.com"
+                  type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
+                  required
                 />
               </div>
 
@@ -124,6 +141,25 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="vv-label block mb-1" htmlFor="register-confirm-password">
+                  Confirm password
+                </label>
+                <input
+                  id="register-confirm-password"
+                  className="vv-input"
+                  placeholder="Re-enter your password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
                 />
               </div>
 
@@ -137,29 +173,30 @@ export default function RegisterPage() {
                   placeholder="human-verified"
                   value={captchaToken}
                   onChange={(e) => setCaptchaToken(e.target.value)}
+                  required
                 />
               </div>
-            </div>
 
-            <p className="text-xs text-slate-500 my-4">
-              Enter <span className="font-semibold">human-verified</span> when CAPTCHA is enabled in local development.
-            </p>
+              <p className="text-xs text-slate-500 my-1">
+                Enter <span className="font-semibold">human-verified</span> when CAPTCHA is enabled in local development.
+              </p>
 
-            <label className="mt-2 flex items-start gap-3 rounded-2xl border border-veriverse-border bg-white/60 px-3 py-3 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={agreedToTerms}
-                onChange={(e) => setAgreedToTerms(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-veriverse-purple focus:ring-veriverse-purple"
-              />
-              <span>
-                I agree to the <Link href="/terms" className="font-semibold text-veriverse-blue underline underline-offset-2">Terms of Service</Link> and <Link href="/privacy" className="font-semibold text-veriverse-blue underline underline-offset-2">Privacy Policy</Link>.
-              </span>
-            </label>
+              <label className="mt-2 flex items-start gap-3 rounded-2xl border border-veriverse-border bg-white/60 px-3 py-3 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-veriverse-purple focus:ring-veriverse-purple"
+                />
+                <span>
+                  I agree to the <Link href="/terms" className="font-semibold text-veriverse-blue underline underline-offset-2">Terms of Service</Link> and <Link href="/privacy" className="font-semibold text-veriverse-blue underline underline-offset-2">Privacy Policy</Link>.
+                </span>
+              </label>
 
-            <button onClick={handleRegister} className="vv-btn-accent w-full mt-5">
-              Register
-            </button>
+              <button type="submit" disabled={isSubmitting} className="vv-btn-accent w-full mt-2">
+                {isSubmitting ? "Creating account..." : "Create account"}
+              </button>
+            </form>
 
             {message && <div className="mt-4"><Toast message={message} type={messageType} /></div>}
 

@@ -93,7 +93,7 @@ export default function TermsPage() {
             </div>
 
             <div className="mt-8 rounded-[24px] border border-veriverse-border bg-veriverse-slate/70 p-5 text-sm leading-7 text-slate-700">
-              Effective date: This policy is effective as of the date it is published in the application and may be updated over time.
+                Effective date: This policy is effective as of the date it is published in the application and may be updated over time. For support, you can contact <a href="mailto:admin@veriverse.io" className="font-semibold text-veriverse-blue underline underline-offset-2">admin@veriverse.io</a>.
             </div>
           </div>
         </div>

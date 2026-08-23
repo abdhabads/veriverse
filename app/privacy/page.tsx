@@ -93,7 +93,7 @@ export default function PrivacyPolicyPage() {
             </div>
 
             <div className="mt-8 rounded-[24px] border border-veriverse-border bg-veriverse-slate/70 p-5 text-sm leading-7 text-slate-700">
-              Contact: If you have questions about your personal data or this policy, contact the VeriVerse support team through the account or product support channels available in the app.
+                Contact: For support, you can contact <a href="mailto:admin@veriverse.io" className="font-semibold text-veriverse-blue underline underline-offset-2">admin@veriverse.io</a>.
             </div>
           </div>
         </div>
