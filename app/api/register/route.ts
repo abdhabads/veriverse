@@ -32,9 +32,14 @@ export async function POST(req: Request) {
     const password = typeof body.password === "string" ? body.password : "";
     const captchaToken =
       typeof body.captchaToken === "string" ? body.captchaToken : "";
+    const agreedToTerms = body.agreedToTerms === true;
 
     if (!username || !email || !password) {
       return fail("Username, email, and password are required.", 400);
+    }
+
+    if (!agreedToTerms) {
+      return fail("You must agree to the Terms of Service and Privacy Policy to continue.", 400);
     }
 
     if (!isValidEmail(email)) {
@@ -73,6 +78,7 @@ export async function POST(req: Request) {
       email,
       password: hashedPassword,
       role: "user",
+      termsAcceptedAt: new Date(),
     });
 
     return ok(

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
@@ -13,16 +14,24 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("error");
 
   const handleRegister = async () => {
+    if (!agreedToTerms) {
+      setMessageType("error");
+      setMessage("You must agree to the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
+
     try {
       await axios.post("/api/register", {
         username: username.trim(),
         email: email.trim(),
         password,
         captchaToken,
+        agreedToTerms: true,
       });
 
       setMessageType("success");
@@ -136,7 +145,19 @@ export default function RegisterPage() {
               Enter <span className="font-semibold">human-verified</span> when CAPTCHA is enabled in local development.
             </p>
 
-            <button onClick={handleRegister} className="vv-btn-accent w-full">
+            <label className="mt-2 flex items-start gap-3 rounded-2xl border border-veriverse-border bg-white/60 px-3 py-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-veriverse-purple focus:ring-veriverse-purple"
+              />
+              <span>
+                I agree to the <Link href="/terms" className="font-semibold text-veriverse-blue underline underline-offset-2">Terms of Service</Link> and <Link href="/privacy" className="font-semibold text-veriverse-blue underline underline-offset-2">Privacy Policy</Link>.
+              </span>
+            </label>
+
+            <button onClick={handleRegister} className="vv-btn-accent w-full mt-5">
               Register
             </button>
 

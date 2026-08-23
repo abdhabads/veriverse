@@ -123,6 +123,10 @@ const UserSchema = new Schema(
       type: Date,
       default: null,
     },
+    termsAcceptedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
