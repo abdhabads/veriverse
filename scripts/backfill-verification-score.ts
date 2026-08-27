@@ -43,7 +43,7 @@ function computeVerificationScore(document: Record<string, any>) {
   const sources = Array.isArray(document.groundingSources) ? document.groundingSources : [];
   const summarized = summarizeGroundingSources(sources);
 
-  return calculateVerificationScore(
+  const rawScore = calculateVerificationScore(
     {
       groundingConfidence: normalizeNumber(document.groundingConfidence, summarized.groundingConfidence),
       contradictionCount: normalizeNumber(document.contradictionCount, summarized.contradictionCount),
@@ -52,6 +52,10 @@ function computeVerificationScore(document: Record<string, any>) {
     },
     typeof document.groundingStatus === "string" ? document.groundingStatus : "not_checked"
   );
+
+  // calculateVerificationScore returns a 0-100 scale; the stored field is 0-1,
+  // matching how lib/aiTruthPipeline.ts persists it.
+  return rawScore / 100;
 }
 
 async function backfillCollection(options: {
