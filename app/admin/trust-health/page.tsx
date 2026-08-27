@@ -11,6 +11,7 @@ import { usePageState } from "@/hooks/usePageState";
 import { useProtectedRolePage } from "@/hooks/useProtectedRolePage";
 import { fetchTrustHealth } from "@/lib/adminClient";
 import { getErrorMessage } from "@/lib/apiClient";
+import { formatVerificationScore } from "@/lib/formatters";
 
 type TrustHealthSummary = {
   totalPosts: number;
@@ -285,7 +286,7 @@ export default function AdminTrustHealthPage() {
                 })()}
               </div>
               <div className="mt-3 flex gap-4 text-xs text-slate-500">
-                <span>Avg score: <strong>{((summary.avgVerificationScore || 0) * 100).toFixed(0)}%</strong></span>
+                <span>Avg score: <strong>{formatVerificationScore(summary.avgVerificationScore)}</strong></span>
                 <span>Low evidence posts: <strong>{summary.lowVerificationCount || 0}</strong></span>
               </div>
             </div>

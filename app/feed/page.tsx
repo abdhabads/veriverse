@@ -17,6 +17,7 @@ import { api, getErrorMessage } from "@/lib/apiClient";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { usePageState } from "@/hooks/usePageState";
 import { runMutation } from "@/lib/runMutation";
+import { formatVerificationScore } from "@/lib/formatters";
 
 type User = {
   _id: string;
@@ -961,7 +962,7 @@ export default function FeedPage() {
 
                     <p className="text-xs text-slate-500">
                       ☆ Risk {Number(post.aiRiskScore || 0)} / 100 ·{" "}
-                      {Number(post.verificationScore || 0)}% verification confidence
+                      {formatVerificationScore(post.verificationScore)} verification confidence
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
                       {Number(post.groundingSources?.length || 0)} source

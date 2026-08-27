@@ -1,5 +1,6 @@
 import TrustIcon, { type TrustIconName } from "@/components/TrustIcons";
 import type { TrustTone } from "@/lib/trustPresentation";
+import { formatVerificationScore } from "@/lib/formatters";
 
 type Props = {
   score?: number | null;
@@ -34,14 +35,14 @@ export default function VerificationBadge({ score, showScore = false }: Props) {
       className={`vv-verdict-pill vv-verdict-${config.tone}`}
       title={
         score != null
-          ? `Verification score: ${(score * 100).toFixed(0)}%`
+          ? `Verification score: ${formatVerificationScore(score)}`
           : "Verification score not yet calculated"
       }
     >
       <TrustIcon name={config.icon} />
       {config.label}
       {showScore && score != null && (
-        <span className="opacity-60">({(score * 100).toFixed(0)}%)</span>
+        <span className="opacity-60">({formatVerificationScore(score)})</span>
       )}
     </span>
   );

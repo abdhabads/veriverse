@@ -404,13 +404,6 @@ export default function PostDetailPage({
               </div>
               <p className="text-sm text-slate-700">Risk Score: {Number(post.aiRiskScore || 0)}</p>
               <p className="text-sm text-slate-700 mt-1">
-                Verification Score: {Number(post.verificationScore || 0)}
-              </p>
-              <p className="text-sm text-slate-700 mt-1">
-                Weighted Trust: {Number(post.accurateWeight || 0).toFixed(1)} accurate /{" "}
-                {Number(post.inaccurateWeight || 0).toFixed(1)} inaccurate
-              </p>
-              <p className="text-sm text-slate-700 mt-1">
                 {post.finalized ? "Finalized" : "Open for voting"}
               </p>
             </div>
