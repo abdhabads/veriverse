@@ -11,8 +11,7 @@ import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
 import { cleanString } from "@/lib/validation";
 import { ok, fail } from "@/lib/apiResponse";
-import { evaluateContradictionForcing } from "@/lib/contradictionForcing";
-import { TrustStatus } from "@/lib/trustTransitions";
+import { determinePostStatus } from "@/lib/postStatusCascade";
 import { recordTrustEvent } from "@/lib/trustEvents";
 
 export async function POST(req: Request) {
@@ -61,34 +60,21 @@ export async function POST(req: Request) {
     const groundingConfidence = screening.groundingConfidence ?? 0;
     const aiLabel = screening.aiLabel;
     const groundingStatus = screening.groundingStatus;
+    const verificationScore = screening.verificationScore ?? 0;
 
-    const forcingResult = evaluateContradictionForcing({
-      contradictionCount: contradictionCount ?? 0,
-      groundingConfidence: groundingConfidence / 100,
-      currentStatus: "unverified",
+    const {
+      status,
+      contradictionForcingApplied,
+      contradictionForcingReason,
+      evidenceDeescalationApplied,
+    } = determinePostStatus({
+      aiLabel,
+      contradictionCount,
+      groundingConfidence,
+      groundingStatus,
+      verificationScore,
+      needsExpertReview,
     });
-
-    let contradictionForcingApplied = false;
-    let status: TrustStatus;
-
-    if (forcingResult.forced) {
-      status = forcingResult.targetStatus;
-      // Record for admin analytics - stored after post is saved below
-      contradictionForcingApplied = true;
-    } else if (contradictionCount >= 2 && groundingConfidence >= 60) {
-      status = "under_expert_review";
-    } else if (aiLabel === "high_risk" && needsExpertReview) {
-      // High-risk sensitive topics (medical, health claims) go to expert review
-      status = "under_expert_review";
-    } else if (aiLabel === "high_risk") {
-      status = "flagged";
-    } else if (needsExpertReview) {
-      status = "under_expert_review";
-    } else if (aiLabel === "suspicious" || groundingStatus === "insufficient_evidence") {
-      status = "flagged";
-    } else {
-      status = "unverified";
-    }
 
     const post = await Post.create({
       author: userId,
@@ -116,7 +102,7 @@ export async function POST(req: Request) {
       lastTrustEvaluatedAt: new Date(),
     });
 
-    if (contradictionForcingApplied && forcingResult.forced) {
+    if (contradictionForcingApplied) {
       await recordTrustEvent({
         postId: String(post._id),
         trustDecisionVersion: Number(post.trustDecisionVersion || 1),
@@ -124,7 +110,23 @@ export async function POST(req: Request) {
         metadata: {
           contradictionCount: screening.contradictionCount,
           groundingConfidence: screening.groundingConfidence,
-          reason: forcingResult.reason,
+          reason: contradictionForcingReason,
+        },
+      });
+    }
+
+    if (evidenceDeescalationApplied) {
+      await recordTrustEvent({
+        postId: String(post._id),
+        trustDecisionVersion: Number(post.trustDecisionVersion || 1),
+        eventType: "evidence_deescalated",
+        metadata: {
+          aiLabel: screening.aiLabel,
+          aiRiskScore: screening.aiRiskScore,
+          verificationScore: screening.verificationScore,
+          groundingConfidence: screening.groundingConfidence,
+          contradictionCount: screening.contradictionCount,
+          groundingStatus: screening.groundingStatus,
         },
       });
     }

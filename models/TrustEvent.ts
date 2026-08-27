@@ -27,6 +27,7 @@ const TrustEventSchema = new Schema(
         "expert_finalize_disputed",
         "appeal_approved_reopen",
         "contradiction_forced",
+        "evidence_deescalated",
         "appeal_rejected",
         "edit_reopen",
       ],
