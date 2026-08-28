@@ -59,11 +59,25 @@ export async function GET(req: Request) {
         { $match: { status: { $in: activeAppealStatuses } } },
         { $group: { _id: "$post", count: { $sum: 1 } } },
       ]),
+      // All three verification-score metrics below exclude
+      // "question"/"instruction" posts - grounding is skipped for those, so
+      // their verificationScore is a structural default (not a real "weak
+      // evidence" signal). Mixing them in would reintroduce the same
+      // category error the contentType classifier fixed at the per-post
+      // verdict layer, just at the dashboard-metrics layer instead. $nin
+      // also matches documents missing the field entirely (posts created
+      // before this field existed), which is correct - those are ordinary
+      // claims.
       Post.aggregate([
-        { $group: { _id: null, avg: { $avg: "$verificationScore" } } }
+        { $match: { contentType: { $nin: ["question", "instruction"] } } },
+        { $group: { _id: null, avg: { $avg: "$verificationScore" } } },
       ]),
-      Post.countDocuments({ verificationScore: { $lt: 0.3, $gt: 0 } }),
+      Post.countDocuments({
+        verificationScore: { $lt: 0.3, $gt: 0 },
+        contentType: { $nin: ["question", "instruction"] },
+      }),
       Post.aggregate([
+        { $match: { contentType: { $nin: ["question", "instruction"] } } },
         {
           $bucket: {
             groupBy: "$verificationScore",
@@ -107,6 +121,9 @@ export async function GET(req: Request) {
       if (post.trustEvaluationState === "pending") healthTags.push("pending_evaluation");
       if (post.trustEvaluationState === "reopened") healthTags.push("reopened");
       if (activeAppealCount > 0) healthTags.push("active_appeal");
+      if (post.contentType === "question" || post.contentType === "instruction") {
+        healthTags.push("non_claim");
+      }
 
       return {
         _id: postId,
@@ -114,6 +131,7 @@ export async function GET(req: Request) {
         status: post.status,
         aiRiskScore: Number(post.aiRiskScore || 0),
         verificationScore: Number(post.verificationScore ?? 0),
+        contentType: post.contentType || "claim",
         moderationReasons: post.moderationReasons || [],
         groundingStatus: post.groundingStatus,
         groundingSummary: post.groundingSummary || "",

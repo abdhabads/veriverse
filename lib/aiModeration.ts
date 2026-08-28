@@ -1,12 +1,32 @@
 import { getOpenAIClient } from "@/lib/openai";
 
+export type ContentType = "claim" | "question" | "instruction" | "rhetorical_claim";
+
 export type AiScreeningResult = {
   aiLabel: "safe" | "suspicious" | "needs_review" | "high_risk";
   aiRiskScore: number;
   moderationReasons: string[];
   provider: "openai" | "fallback";
+  contentType: ContentType;
+  extractedClaim: string | null;
   raw?: unknown;
 };
+
+const VALID_CONTENT_TYPES: ContentType[] = [
+  "claim",
+  "question",
+  "instruction",
+  "rhetorical_claim",
+];
+
+// Unrecognized/missing classification fails toward full evaluation, never
+// away from it - a post the classifier couldn't type is treated as an
+// ordinary claim, not silently exempted from verification.
+function normalizeContentType(value: unknown): ContentType {
+  return VALID_CONTENT_TYPES.includes(value as ContentType)
+    ? (value as ContentType)
+    : "claim";
+}
 
 type SafetySignals = {
   flagged: boolean;
@@ -179,6 +199,11 @@ function localFallback(content: string): AiScreeningResult {
     aiRiskScore,
     moderationReasons: [...new Set(reasons)].slice(0, 8),
     provider: "fallback",
+    // The regex fallback has no way to distinguish a question from a claim -
+    // default to "claim" so losing the AI classifier never silently exempts
+    // content from verification.
+    contentType: "claim",
+    extractedClaim: null,
   };
 }
 
@@ -225,6 +250,8 @@ async function runSafetyModeration(content: string): Promise<SafetySignals> {
 async function runMisinformationClassifier(content: string): Promise<{
   baseRiskScore: number;
   reasons: string[];
+  contentType: ContentType;
+  extractedClaim: string | null;
   raw?: unknown;
 }> {
   const client = getOpenAIClient();
@@ -245,7 +272,9 @@ Do not make final enforcement decisions. Expert review and community voting happ
 Required JSON shape:
 {
   "baseRiskScore": number,
-  "reasons": string[]
+  "reasons": string[],
+  "contentType": "claim" | "question" | "instruction" | "rhetorical_claim",
+  "extractedClaim": string | null
 }
 
 Scoring guidance:
@@ -263,6 +292,38 @@ Focus on misinformation-style risk signals such as:
 
 Do not judge style alone.
 Return concise reasons only.
+
+"contentType" tells a separate fact-verification step whether this post
+actually asserts something that can be verified true or false:
+
+- "claim": an assertion of fact.
+- "question": a genuine, open request for information with no asserted
+  answer (e.g. "What's the difference between X and Y?", "Is this website
+  a scam?"). A sentence is NOT automatically a question just because it
+  starts with a wh-word - "What caused the 2008 crash was subprime
+  lending" is a "claim" that happens to start with "What".
+- "instruction": a request or command with no factual assertion of its own
+  (e.g. "Provide two examples of X", "List the causes of Y").
+- "rhetorical_claim": phrased as a question or instruction, but actually
+  asserting something as fact through loaded/leading framing - e.g.
+  "Isn't it true that bleach cures infections?" asserts "bleach cures
+  infections." Treat any question or instruction that implies a specific
+  factual assertion as "rhetorical_claim", not "question"/"instruction" -
+  this distinction exists specifically so a dangerous claim can't dodge
+  verification by being phrased as a question.
+
+For "claim" and "rhetorical_claim", set "extractedClaim" to the specific
+factual assertion to verify (for "claim" this is normally just the
+original statement; for "rhetorical_claim" it's the assertion hidden
+inside the framing). For "question" and "instruction" with no real
+assertion, set "extractedClaim" to null. Never invent an assertion that
+isn't actually implied by the text.
+
+"contentType" and "extractedClaim" do NOT change "baseRiskScore" or
+"reasons" - a dangerous instruction (e.g. asking how to synthesize a
+poison) can still score high risk via "reasons" even with contentType
+"instruction" and no extractedClaim. Safety risk and claim-verifiability
+are independent judgments.
 `.trim();
 
   const response = await client.responses.create({
@@ -297,10 +358,23 @@ Return concise reasons only.
       : 0;
 
   const reasons = normalizeReasons((parsed as any)?.reasons);
+  const contentType = normalizeContentType((parsed as any)?.contentType);
+
+  // Only "claim"/"rhetorical_claim" ever carry an extractedClaim - a
+  // "question"/"instruction" has nothing to verify by definition, and we
+  // don't trust the model to override that on its own.
+  const extractedClaim =
+    (contentType === "claim" || contentType === "rhetorical_claim") &&
+    typeof (parsed as any)?.extractedClaim === "string" &&
+    (parsed as any).extractedClaim.trim()
+      ? (parsed as any).extractedClaim.trim()
+      : null;
 
   return {
     baseRiskScore,
     reasons,
+    contentType,
+    extractedClaim,
     raw: parsed,
   };
 }
@@ -338,6 +412,8 @@ export async function screenContentWithAI(
       aiRiskScore,
       moderationReasons: [...new Set(moderationReasons)].slice(0, 6),
       provider: "openai",
+      contentType: classifier.contentType,
+      extractedClaim: classifier.extractedClaim,
       raw: {
         safetyFlagged: safety.flagged,
         classifier: classifier.raw,

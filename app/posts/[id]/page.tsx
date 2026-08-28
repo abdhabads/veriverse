@@ -60,6 +60,7 @@ type Post = {
   groundingConfidence?: number;
   contradictionCount?: number;
   supportCount?: number;
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
   trustDecisionVersion?: number;
   trustEvaluationState?: string;
 };
@@ -391,6 +392,7 @@ export default function PostDetailPage({
                   verificationScore={post.verificationScore}
                   contradictionCount={post.contradictionCount}
                   groundingSources={post.groundingSources}
+                  contentType={post.contentType}
                 />
 
                 {/* Secondary - moderation risk label, kept visually subordinate */}

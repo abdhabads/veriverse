@@ -28,6 +28,7 @@ type Post = {
   groundingSources?: Array<{
     stance: "supports" | "contradicts" | "context" | "unknown";
   }>;
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
   accurateVotes: number;
   inaccurateVotes: number;
   createdAt: string;
@@ -123,6 +124,7 @@ export default function PublicProfilePage({
                       verificationScore={post.verificationScore}
                       contradictionCount={post.contradictionCount}
                       groundingSources={post.groundingSources}
+                      contentType={post.contentType}
                     />
                     <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(getDisplayedAiLabel(post))}`}>
                       AI: {getDisplayedAiLabel(post).replaceAll("_", " ")}

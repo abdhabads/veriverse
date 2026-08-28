@@ -93,6 +93,8 @@ export async function POST(req: Request) {
       groundingConfidence: screening.groundingConfidence || 0,
       contradictionCount: screening.contradictionCount || 0,
       supportCount: screening.supportCount || 0,
+      contentType: screening.contentType || "claim",
+      extractedClaim: screening.extractedClaim ?? null,
       aiProvider: screening.provider || "",
       needsExpertReview,
       status,
@@ -127,6 +129,18 @@ export async function POST(req: Request) {
           groundingConfidence: screening.groundingConfidence,
           contradictionCount: screening.contradictionCount,
           groundingStatus: screening.groundingStatus,
+        },
+      });
+    }
+
+    if (screening.contentType === "question" || screening.contentType === "instruction") {
+      await recordTrustEvent({
+        postId: String(post._id),
+        trustDecisionVersion: Number(post.trustDecisionVersion || 1),
+        eventType: "content_classified_non_claim",
+        metadata: {
+          contentType: screening.contentType,
+          aiLabel: screening.aiLabel,
         },
       });
     }

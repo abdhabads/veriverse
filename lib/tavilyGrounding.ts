@@ -64,6 +64,47 @@ function extractClaimKeywords(claim: string): string[] {
   );
 }
 
+// Captures the sentence in `original` (natural case) surrounding the first
+// occurrence of `needle` in `haystackLower` (lowercased, same indexing as
+// `original`). Falls back to the whole slice if no boundary is found -
+// used to turn "a signal matched somewhere in this portion" into an actual
+// quotable excerpt for stanceEvidence.
+function findSentence(original: string, haystackLower: string, needle: string): string {
+  const idx = haystackLower.indexOf(needle);
+  if (idx === -1) return original.trim();
+
+  const before = haystackLower.slice(0, idx);
+  const boundary = Math.max(
+    before.lastIndexOf(". "),
+    before.lastIndexOf("! "),
+    before.lastIndexOf("? "),
+    before.lastIndexOf("\n")
+  );
+  const start = boundary === -1 ? 0 : boundary + 2;
+
+  const afterMatchStart = idx + needle.length;
+  const rest = haystackLower.slice(afterMatchStart);
+  const endOffset = rest.search(/[.!?](\s|$)/);
+  const end = endOffset === -1 ? original.length : afterMatchStart + endOffset + 1;
+
+  return original.slice(start, end).trim();
+}
+
+// Of several signals that matched the same portion, picks the one that
+// appears earliest in the text - the one a reader would actually hit first.
+function earliestMatch(portion: string, matches: string[]): string {
+  return matches.reduce((best, candidate) => {
+    const bestIdx = portion.indexOf(best);
+    const candidateIdx = portion.indexOf(candidate);
+    return candidateIdx !== -1 && candidateIdx < bestIdx ? candidate : best;
+  });
+}
+
+type StanceClassification = {
+  stance: GroundingSource["stance"];
+  stanceEvidence: string | null;
+};
+
 // Topic-overlap fallback: for claims outside the medical vocabulary above,
 // only ever asserts "contradicts" (from explicit falsity language) or
 // "context" (topically relevant, stance not confidently determined). Never
@@ -71,36 +112,56 @@ function extractClaimKeywords(claim: string): string[] {
 // Runs only when the medical-specific signals found nothing, so it never
 // overrides a higher-precision clinical classification.
 function classifyByTopicOverlap(
+  originalBodyPortion: string,
   bodyPortion: string,
   claim: string
-): GroundingSource["stance"] {
+): StanceClassification {
   const keywords = extractClaimKeywords(claim);
-  if (keywords.length === 0) return "unknown";
+  if (keywords.length === 0) return { stance: "unknown", stanceEvidence: null };
 
   const matched = keywords.filter((k) => bodyPortion.includes(k));
   const overlapRatio = matched.length / keywords.length;
 
-  if (overlapRatio < 0.4) return "unknown";
+  if (overlapRatio < 0.4) return { stance: "unknown", stanceEvidence: null };
 
-  const hasContradiction = GENERIC_CONTRADICTION_SIGNALS.some((s) =>
+  const contradictionSignal = GENERIC_CONTRADICTION_SIGNALS.find((s) =>
     bodyPortion.includes(s)
   );
-  if (hasContradiction) return "contradicts";
+  if (contradictionSignal) {
+    return {
+      stance: "contradicts",
+      stanceEvidence: findSentence(originalBodyPortion, bodyPortion, contradictionSignal),
+    };
+  }
 
-  return "context";
+  // Keyword overlap alone isn't one quotable phrase - don't invent one.
+  return { stance: "context", stanceEvidence: null };
 }
 
 export function classifyStance(
   content: string,
   query: string
 ): GroundingSource["stance"] {
-  if (!content) return "unknown";
+  return classifyStanceWithEvidence(content, query).stance;
+}
+
+// Same classification as classifyStance, plus the text span that triggered
+// it. Kept as a separate entry point so classifyStance's tested return type
+// (just the stance) never changes - this function does no additional
+// classification, it only captures what the layer below already decided.
+export function classifyStanceWithEvidence(
+  content: string,
+  query: string
+): StanceClassification {
+  if (!content) return { stance: "unknown", stanceEvidence: null };
 
   // Split title from body - title is passed first in "title + content" string.
   // Title signals are more reliable than body signals so weight them separately.
   const fullText = content.toLowerCase();
   const titlePortion = fullText.slice(0, 120); // title is typically < 100 chars
   const bodyPortion = fullText.slice(0, 800);
+  const originalTitlePortion = content.slice(0, 120);
+  const originalBodyPortion = content.slice(0, 800);
 
   const contradictionSignals = [
     "no evidence", "not supported", "disproven", "false", "myth",
@@ -123,46 +184,78 @@ export function classifyStance(
   ];
 
   // Title-level contradiction is a strong signal - return immediately.
-  const titleContradictionHits = contradictionSignals.filter(s =>
+  const titleContradictionMatches = contradictionSignals.filter(s =>
     titlePortion.includes(s)
-  ).length;
+  );
 
-  if (titleContradictionHits >= 1) {
-    return "contradicts";
+  if (titleContradictionMatches.length >= 1) {
+    return {
+      stance: "contradicts",
+      stanceEvidence: findSentence(
+        originalTitlePortion,
+        titlePortion,
+        earliestMatch(titlePortion, titleContradictionMatches)
+      ),
+    };
   }
 
   // Title-level support with no title contradiction.
-  const titleSupportHits = supportSignals.filter(s =>
+  const titleSupportMatches = supportSignals.filter(s =>
     titlePortion.includes(s)
-  ).length;
+  );
 
-  if (titleSupportHits >= 2 && titleContradictionHits === 0) {
-    return "supports";
+  if (titleSupportMatches.length >= 2) {
+    return {
+      stance: "supports",
+      stanceEvidence: findSentence(
+        originalTitlePortion,
+        titlePortion,
+        earliestMatch(titlePortion, titleSupportMatches)
+      ),
+    };
   }
 
   // Fall back to body content analysis.
-  const contradictionScore = contradictionSignals.filter(s =>
+  const contradictionMatches = contradictionSignals.filter(s =>
     bodyPortion.includes(s)
-  ).length;
-  const supportScore = supportSignals.filter(s =>
+  );
+  const supportMatches = supportSignals.filter(s =>
     bodyPortion.includes(s)
-  ).length;
+  );
+  const contradictionScore = contradictionMatches.length;
+  const supportScore = supportMatches.length;
 
   if (contradictionScore >= 1 && contradictionScore >= supportScore) {
-    return "contradicts";
+    return {
+      stance: "contradicts",
+      stanceEvidence: findSentence(
+        originalBodyPortion,
+        bodyPortion,
+        earliestMatch(bodyPortion, contradictionMatches)
+      ),
+    };
   }
   if (supportScore >= 1 && supportScore > contradictionScore) {
-    return "supports";
+    return {
+      stance: "supports",
+      stanceEvidence: findSentence(
+        originalBodyPortion,
+        bodyPortion,
+        earliestMatch(bodyPortion, supportMatches)
+      ),
+    };
   }
   if (contradictionScore > 0 || supportScore > 0) {
-    return "context";
+    // Tied contradiction/support signals - "context" here isn't one
+    // triggering phrase, so don't manufacture an excerpt for it.
+    return { stance: "context", stanceEvidence: null };
   }
 
   // No clinical/medical signal at all - fall back to generic topic-overlap
   // classification so non-medical claims (political, historical, biographical,
   // etc.) aren't stuck at "unknown" just because this source's vocabulary
   // doesn't happen to use clinical phrasing.
-  return classifyByTopicOverlap(bodyPortion, query);
+  return classifyByTopicOverlap(originalBodyPortion, bodyPortion, query);
 }
 
 function deriveRiskAdjustment(sources: GroundingSource[]): number {
@@ -295,15 +388,19 @@ export async function runTavilyGrounding(
 
   const groundingSources: GroundingSource[] = dedupedResults
     .filter(r => r.url && r.title)
-    .map(r => ({
-      title: r.title?.trim() ?? "",
-      url: r.url?.trim() ?? "",
-      domain: extractDomain(r.url ?? ""),
-      stance: classifyStance(
+    .map(r => {
+      const { stance, stanceEvidence } = classifyStanceWithEvidence(
         (r.title ?? "") + " " + (r.content ?? ""),
         content
-      ),
-    }));
+      );
+      return {
+        title: r.title?.trim() ?? "",
+        url: r.url?.trim() ?? "",
+        domain: extractDomain(r.url ?? ""),
+        stance,
+        stanceEvidence,
+      };
+    });
 
   // Build summary from classified sources
   const contradictingSources = groundingSources.filter(s => s.stance === "contradicts");

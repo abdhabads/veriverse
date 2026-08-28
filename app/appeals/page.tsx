@@ -29,6 +29,7 @@ type Appeal = {
     groundingSources?: Array<{
       stance: "supports" | "contradicts" | "context" | "unknown";
     }>;
+    contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
   };
 };
 
@@ -115,6 +116,7 @@ export default function AppealsPage() {
                       verificationScore={appeal.post.verificationScore}
                       contradictionCount={appeal.post.contradictionCount}
                       groundingSources={appeal.post.groundingSources}
+                      contentType={appeal.post.contentType}
                     />
                   </div>
                   <p className="text-sm text-slate-700 mb-1">

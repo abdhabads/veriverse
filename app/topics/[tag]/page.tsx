@@ -30,6 +30,7 @@ type Post = {
   verificationScore?: number | null;
   contradictionCount?: number;
   groundingSources?: GroundingSource[];
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
 };
 
 export default function TopicPage({
@@ -118,6 +119,7 @@ export default function TopicPage({
                       verificationScore={post.verificationScore}
                       contradictionCount={post.contradictionCount}
                       groundingSources={post.groundingSources}
+                      contentType={post.contentType}
                     />
                   </div>
 

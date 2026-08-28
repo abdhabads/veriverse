@@ -21,6 +21,7 @@ type PostItem = {
   groundingConfidence?: number;
   contradictionCount?: number;
   supportCount?: number;
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
   author?: {
     username?: string;
     reputation?: number;
@@ -159,6 +160,9 @@ function AdminQueuesPageContent() {
                           {post.author?.username || "Unknown"}
                         </p>
                         <span className="vv-pill-red">Risk {Number(post.aiRiskScore || 0)}</span>
+                        {post.contentType === "question" || post.contentType === "instruction" ? (
+                          <span className="vv-pill-gray">Not a Claim ({post.contentType})</span>
+                        ) : null}
                       </div>
                       <p className="mb-2 text-sm text-slate-700">{post.content}</p>
                       {post.groundingSummary ? (
@@ -200,9 +204,14 @@ function AdminQueuesPageContent() {
                 <div className="space-y-3">
                   {expertReviewPosts.map((post) => (
                     <div key={post._id} className="vv-card-soft p-4">
-                      <p className="mb-2 font-medium text-veriverse-dark">
-                        {post.author?.username || "Unknown"}
-                      </p>
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-veriverse-dark">
+                          {post.author?.username || "Unknown"}
+                        </p>
+                        {post.contentType === "question" || post.contentType === "instruction" ? (
+                          <span className="vv-pill-gray">Not a Claim ({post.contentType})</span>
+                        ) : null}
+                      </div>
                       <p className="mb-3 text-sm text-slate-700">{post.content}</p>
                       <button
                         onClick={() => router.push(`/posts/${post._id}`)}

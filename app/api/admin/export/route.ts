@@ -211,10 +211,23 @@ async function buildTrustSummary() {
       .sort({ aiRiskScore: -1, createdAt: -1 })
       .limit(25)
       .lean(),
+    // Excludes "question"/"instruction" posts - grounding is skipped for
+    // those, so their verificationScore is a structural default (not a
+    // real "weak evidence" signal), and mixing them in here would silently
+    // reintroduce the exact category error the contentType classifier was
+    // built to fix, just at the dashboard-metrics layer instead of the
+    // per-post verdict layer. $nin also matches documents missing the
+    // field entirely (posts created before this field existed), which is
+    // correct - those predate rhetorical/non-claim classification and are
+    // ordinary claims.
     Post.aggregate([
-      { $group: { _id: null, avg: { $avg: "$verificationScore" } } }
+      { $match: { contentType: { $nin: ["question", "instruction"] } } },
+      { $group: { _id: null, avg: { $avg: "$verificationScore" } } },
     ]),
-    Post.countDocuments({ verificationScore: { $lt: 0.3, $gt: 0 } }),
+    Post.countDocuments({
+      verificationScore: { $lt: 0.3, $gt: 0 },
+      contentType: { $nin: ["question", "instruction"] },
+    }),
   ]);
 
   return {
@@ -252,6 +265,7 @@ async function getExportPayload(type: string) {
         .select(
           "content status aiLabel aiRiskScore verificationScore " +
           "groundingStatus groundingConfidence contradictionCount supportCount " +
+          "contentType extractedClaim " +
           "moderationReasons needsExpertReview expertDecision finalized " +
           "hashtags createdAt updatedAt author"
         )

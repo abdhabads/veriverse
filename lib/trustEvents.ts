@@ -10,6 +10,7 @@ export type TrustEventType =
   | "appeal_approved_reopen"
   | "contradiction_forced"
   | "evidence_deescalated"
+  | "content_classified_non_claim"
   | "appeal_rejected"
   | "edit_reopen";
 

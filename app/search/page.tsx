@@ -42,6 +42,7 @@ type Post = {
   verificationScore?: number | null;
   contradictionCount?: number;
   groundingSources?: GroundingSource[];
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
 };
 
 export default function SearchPage() {
@@ -240,6 +241,7 @@ function SearchPageInner() {
                       verificationScore={post.verificationScore}
                       contradictionCount={post.contradictionCount}
                       groundingSources={post.groundingSources}
+                      contentType={post.contentType}
                     />
                   </div>
 

@@ -77,6 +77,7 @@ type Post = {
   groundingConfidence?: number;
   contradictionCount?: number;
   supportCount?: number;
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
   needsExpertReview?: boolean;
   expertDecision?: string;
   hasActiveAppeal?: boolean;
@@ -925,6 +926,7 @@ export default function FeedPage() {
                         verificationScore={post.verificationScore}
                         contradictionCount={post.contradictionCount}
                         groundingSources={post.groundingSources}
+                        contentType={post.contentType}
                       />
                     </div>
 

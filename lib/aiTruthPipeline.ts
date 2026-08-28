@@ -12,15 +12,18 @@ export type FullTruthPipelineResult = {
     url: string;
     domain: string;
     stance: "supports" | "contradicts" | "context" | "unknown";
+    stanceEvidence: string | null;
   }>;
   groundingMetrics: GroundingMetrics;
   groundingConfidence: number;
   contradictionCount: number;
   supportCount: number;
   verificationScore: number;
+  contentType: AiScreeningResult["contentType"];
+  extractedClaim: string | null;
 };
 
-export const TRUTH_PIPELINE_CACHE_VERSION = "11";
+export const TRUTH_PIPELINE_CACHE_VERSION = "12";
 import { screenContentWithAI, AiScreeningResult } from "@/lib/aiModeration";
 import { runGroundedFactCheck } from "@/lib/groundedFactCheck";
 import { runTavilyGrounding } from "@/lib/tavilyGrounding";
@@ -30,6 +33,9 @@ import { hashContent } from "@/lib/hash";
 import { connectDB } from "@/lib/mongodb";
 import { applyGroundingRiskFloor, mapRiskToLabel } from "@/lib/truthScoring";
 import { withRetry, withTimeout } from "@/lib/withRetry";
+import { resolveGroundingPlan } from "@/lib/contentTypeRouting";
+import { detectHeuristicMismatch } from "@/lib/nonClaimHeuristic";
+import { logEvent } from "@/lib/logger";
 import {
   calculateVerificationScore,
   summarizeGroundingSources,
@@ -94,6 +100,8 @@ function normalizeCachedResult(
     verificationScore: result.verificationScore > 1
       ? result.verificationScore / 100
       : result.verificationScore,
+    contentType: result.contentType ?? "claim",
+    extractedClaim: result.extractedClaim ?? null,
   };
 }
 
@@ -151,11 +159,30 @@ export async function evaluateContentTruthPipeline(
   // When AI is disabled, skip all grounding (all paths call OpenAI which would throw)
   const aiDisabled = process.env.AI_ENABLED === "false";
 
+  const contentType = baseScreening.contentType ?? "claim";
+  const extractedClaim = baseScreening.extractedClaim ?? null;
+  const groundingPlan = resolveGroundingPlan({ content, contentType, extractedClaim });
+  const groundingQuery = groundingPlan.groundingQuery;
+  const skipGrounding = groundingPlan.skipGrounding;
+
+  // Advisory only - never gates behaviour. Logged so prompt drift in the
+  // classifier's contentType calls can be monitored over time.
+  const { mismatch, heuristic } = detectHeuristicMismatch(content, skipGrounding);
+  if (mismatch) {
+    logEvent("CONTENT_TYPE_HEURISTIC_MISMATCH", {
+      contentType,
+      skipGrounding,
+      heuristicLooksLikeNonClaim: heuristic.looksLikeNonClaim,
+      heuristicReason: heuristic.reason,
+      contentPreview: content.slice(0, 120),
+    });
+  }
+
   const [webGrounding, internalGrounding] = await Promise.all([
-    aiDisabled
+    aiDisabled || skipGrounding
       ? Promise.resolve(emptyWebGrounding())
       : withRetry(
-          () => withTimeout(runGroundedFactCheck(content), 25_000, "Web grounding"),
+          () => withTimeout(runGroundedFactCheck(groundingQuery), 25_000, "Web grounding"),
           { maxAttempts: 2, baseDelayMs: 1_000, label: "Web grounding" }
         ).catch(async (error) => {
           if (failOpen) {
@@ -164,7 +191,7 @@ export async function evaluateContentTruthPipeline(
             if (tavilyKey) {
               try {
                 console.warn("OpenAI grounding failed, trying Tavily fallback:", error?.message ?? error);
-                return await runTavilyGrounding(content);
+                return await runTavilyGrounding(groundingQuery);
               } catch (tavilyError) {
                 console.warn("Tavily fallback also failed, using neutral grounding:", tavilyError);
               }
@@ -175,10 +202,10 @@ export async function evaluateContentTruthPipeline(
           }
           throw error;
         }),
-    aiDisabled
+    aiDisabled || skipGrounding
       ? Promise.resolve(emptyInternalGrounding())
       : withRetry(
-          () => withTimeout(runInternalGrounding(content), 10_000, "Internal grounding"),
+          () => withTimeout(runInternalGrounding(groundingQuery), 10_000, "Internal grounding"),
           { maxAttempts: 2, baseDelayMs: 500, label: "Internal grounding" }
         ).catch((error) => {
           if (failOpen) {
@@ -235,6 +262,8 @@ export async function evaluateContentTruthPipeline(
     contradictionCount: groundingMetrics?.contradictionCount ?? 0,
     supportCount: groundingMetrics?.supportCount ?? 0,
     verificationScore,
+    contentType,
+    extractedClaim,
   };
 
   await GroundingCache.findOneAndUpdate(

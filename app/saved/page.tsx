@@ -21,6 +21,7 @@ type Post = {
   groundingSources?: Array<{
     stance: "supports" | "contradicts" | "context" | "unknown";
   }>;
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
   author: {
     username: string;
     reputation?: number;
@@ -91,6 +92,7 @@ export default function SavedPage() {
                   verificationScore={item.post.verificationScore}
                   contradictionCount={item.post.contradictionCount}
                   groundingSources={item.post.groundingSources}
+                  contentType={item.post.contentType}
                 />
               </div>
               <button

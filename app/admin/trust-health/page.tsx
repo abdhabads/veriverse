@@ -41,6 +41,7 @@ type TrustHealthItem = {
   groundingConfidence: number;
   contradictionCount: number;
   supportCount: number;
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
   trustEvaluationState: string;
   finalized: boolean;
   appealCount: number;

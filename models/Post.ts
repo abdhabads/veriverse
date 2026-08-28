@@ -9,6 +9,7 @@ const GroundingSourceSchema = new Schema({
     enum: ["supports", "contradicts", "context", "unknown"],
     default: "unknown",
   },
+  stanceEvidence: { type: String, default: null },
 }, { _id: false });
 
 const PostSchema = new Schema({
@@ -133,6 +134,15 @@ const PostSchema = new Schema({
   supportCount: {
     type: Number,
     default: 0,
+  },
+  contentType: {
+    type: String,
+    enum: ["claim", "question", "instruction", "rhetorical_claim"],
+    default: "claim",
+  },
+  extractedClaim: {
+    type: String,
+    default: null,
   },
   aiProvider: {
     type: String,

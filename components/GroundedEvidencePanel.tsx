@@ -1,12 +1,14 @@
 import VerificationBadge from "@/components/VerificationBadge";
 import TrustIcon, { type TrustIconName } from "@/components/TrustIcons";
 import type { TrustTone } from "@/lib/trustPresentation";
+import { truncateAtSentence } from "@/lib/textUtils";
 
 type GroundingSource = {
   title: string;
   url: string;
   domain: string;
   stance: "supports" | "contradicts" | "context" | "unknown";
+  stanceEvidence?: string | null;
 };
 
 type GroundedEvidencePanelProps = {
@@ -37,6 +39,23 @@ const STANCE_PRESENTATION: Record<
   context: { tone: "review", icon: "alert" },
   unknown: { tone: "neutral", icon: "circle" },
 };
+
+// "2 sources · 1 domain" - lets a reader see at a glance whether multiple
+// sources are actually independent evidence or just multiple articles off
+// the same site. Domain-less sources (older posts, or missing data) are
+// excluded from the unique-domain tally rather than counted as distinct
+// domains or crashing the count.
+function formatSourceDomainSummary(sourceCount: number, uniqueDomainCount: number): string {
+  const sourcesLabel = `${sourceCount} source${sourceCount === 1 ? "" : "s"}`;
+
+  // A single source, or no usable domain data at all, makes a domain count
+  // either redundant or meaningless - just show the source count.
+  if (sourceCount <= 1 || uniqueDomainCount === 0) {
+    return sourcesLabel;
+  }
+
+  return `${sourcesLabel} · ${uniqueDomainCount} domain${uniqueDomainCount === 1 ? "" : "s"}`;
+}
 
 function getEvidenceSummary(
   groundingStatus?: GroundedEvidencePanelProps["groundingStatus"],
@@ -88,6 +107,17 @@ export default function GroundedEvidencePanel({
     groundingSources.length
   );
 
+  const uniqueDomainCount = new Set(
+    groundingSources
+      .map((source) => source.domain?.trim())
+      .filter((domain): domain is string => Boolean(domain))
+  ).size;
+
+  const sourceDomainSummary =
+    groundingSources.length > 0
+      ? formatSourceDomainSummary(groundingSources.length, uniqueDomainCount)
+      : null;
+
   return (
     <div className="vv-post-panel mb-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -109,6 +139,11 @@ export default function GroundedEvidencePanel({
       <p className="mb-3 text-sm leading-6 text-veriverse-dark/80">{summary}</p>
 
       <div className="mb-3 flex flex-wrap gap-2">
+        {sourceDomainSummary ? (
+          <span className="vv-verdict-pill vv-verdict-neutral">
+            {sourceDomainSummary}
+          </span>
+        ) : null}
         <span className="vv-verdict-pill vv-verdict-neutral">
           Confidence: {Number(groundingConfidence || 0)}
         </span>
@@ -145,6 +180,17 @@ export default function GroundedEvidencePanel({
                 >
                   {source.title || source.domain}
                 </a>
+
+                {source.stanceEvidence?.trim() ? (
+                  <p className="mt-1 text-xs leading-5 text-veriverse-dark/60">
+                    <span className="font-medium not-italic text-veriverse-dark/45">
+                      From the research:{" "}
+                    </span>
+                    <span className="italic">
+                      &ldquo;{truncateAtSentence(source.stanceEvidence.trim(), 180)}&rdquo;
+                    </span>
+                  </p>
+                ) : null}
               </div>
             );
           })}

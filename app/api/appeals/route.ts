@@ -7,6 +7,7 @@ import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
 import { cleanString, isValidObjectId } from "@/lib/validation";
 import { ok, fail } from "@/lib/apiResponse";
+import { isPostAppealable } from "@/lib/appealEligibility";
 
 export async function POST(req: Request) {
   try {
@@ -38,8 +39,7 @@ export async function POST(req: Request) {
     const post = await Post.findById(postId);
     if (!post) return fail("Post not found", 404);
 
-    const appealableStatuses = ["false", "flagged", "disputed"];
-    if (!appealableStatuses.includes(post.status)) {
+    if (!isPostAppealable(post)) {
       return fail("This post cannot be appealed right now", 400);
     }
 

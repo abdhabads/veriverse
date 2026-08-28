@@ -1,11 +1,13 @@
 import { getOpenAIClient } from "@/lib/openai";
 import { truncateAtSentence } from "@/lib/textUtils";
+import { logEvent } from "@/lib/logger";
 
 export type GroundingSource = {
   title: string;
   url: string;
   domain: string;
   stance: "supports" | "contradicts" | "context" | "unknown";
+  stanceEvidence: string | null;
 };
 
 export type GroundingResult = {
@@ -28,6 +30,27 @@ function clampAdjustment(value: number): number {
   return Math.max(-25, Math.min(25, Math.round(value)));
 }
 
+// Smart quotes -> straight quotes, collapsed whitespace. Used to compare a
+// model-returned "quote" against the research text it was supposedly pulled
+// from without false negatives from cosmetic differences in punctuation/
+// line breaks - not to loosen the check into a fuzzy/paraphrase match.
+function normalizeForQuoteMatch(text: string): string {
+  return text
+    .replace(/[‘’‛′]/g, "'")
+    .replace(/[“”‟″]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Verifies a claimed stanceEvidence quote actually occurs in the text the
+// model researched, so we never display a fabricated/paraphrased quote in
+// quotation marks attributed to a real source.
+function isQuoteVerifiedInText(candidate: string, sourceText: string): boolean {
+  const normalizedCandidate = normalizeForQuoteMatch(candidate);
+  if (!normalizedCandidate) return false;
+  return normalizeForQuoteMatch(sourceText).includes(normalizedCandidate);
+}
+
 const RESEARCH_SYSTEM_PROMPT = `
 You are a source-grounded claim checker for a misinformation-aware social platform.
 
@@ -48,11 +71,21 @@ only, no other text.
     {
       "title": string,
       "url": string,
-      "stance": "supports" | "contradicts" | "context" | "unknown"
+      "stance": "supports" | "contradicts" | "context" | "unknown",
+      "stanceEvidence": string | null
     }
   ],
   "evidenceRiskAdjustment": number
 }
+
+"stanceEvidence" captures WHY a source got its stance, for display next to
+it. If the research findings above quote or closely paraphrase a specific
+sentence or phrase from that source that justifies its stance, put that
+phrase in "stanceEvidence" (verbatim or near-verbatim from the findings,
+not reworded). If the findings don't attribute a specific phrase to that
+source - including whenever stance is "context" or "unknown" - set
+"stanceEvidence" to null. Never invent or paraphrase a justification that
+isn't actually in the research findings.
 
 "stance" is ALWAYS relative to the user's claim as literally stated, never a
 judgment of the source's general trustworthiness or topical relevance. A
@@ -146,14 +179,52 @@ export async function runGroundedFactCheck(
     ? parsed.groundingSources
         .filter((item: any) => item && typeof item.url === "string")
         .slice(0, 5)
-        .map((item: any) => ({
-          title: typeof item.title === "string" ? item.title.trim() : "",
-          url: item.url.trim(),
-          domain: extractDomain(item.url.trim()),
-          stance: ["supports", "contradicts", "context", "unknown"].includes(item.stance)
+        .map((item: any) => {
+          const stance: GroundingSource["stance"] = [
+            "supports",
+            "contradicts",
+            "context",
+            "unknown",
+          ].includes(item.stance)
             ? item.stance
-            : "unknown",
-        }))
+            : "unknown";
+
+          // Only "supports"/"contradicts" ever get a quoted justification -
+          // "context"/"unknown" means no single phrase confidently decided it.
+          const claimedEvidence =
+            (stance === "supports" || stance === "contradicts") &&
+            typeof item.stanceEvidence === "string" &&
+            item.stanceEvidence.trim()
+              ? item.stanceEvidence.trim()
+              : null;
+
+          // The model is asked to quote verbatim, but nothing stops it from
+          // paraphrasing instead - which would show fabricated text in
+          // quotation marks attributed to a real source. Reject any quote
+          // that doesn't actually occur in the research text it came from;
+          // showing nothing is strictly better than showing an unverifiable
+          // quote.
+          let stanceEvidence: string | null = null;
+          if (claimedEvidence) {
+            if (isQuoteVerifiedInText(claimedEvidence, researchText)) {
+              stanceEvidence = truncateAtSentence(claimedEvidence, 240);
+            } else {
+              logEvent("GROUNDING_STANCE_EVIDENCE_UNVERIFIED", {
+                url: item.url.trim(),
+                stance,
+                claimedEvidence: claimedEvidence.slice(0, 300),
+              });
+            }
+          }
+
+          return {
+            title: typeof item.title === "string" ? item.title.trim() : "",
+            url: item.url.trim(),
+            domain: extractDomain(item.url.trim()),
+            stance,
+            stanceEvidence,
+          };
+        })
     : [];
 
   return {

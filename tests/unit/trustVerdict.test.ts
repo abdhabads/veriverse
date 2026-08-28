@@ -118,4 +118,57 @@ describe("getTrustVerdict", () => {
       expect(v.priority).toBe(0);
     });
   });
+
+  describe("non-claim content", () => {
+    it("returns Not a Claim for a genuine question, even with a nonzero score on record", () => {
+      // A skipped-grounding post still carries a structural-default score
+      // (grounding never ran) - it must never render as an evidence tier.
+      const v = getTrustVerdict({
+        status: "unverified",
+        contentType: "question",
+        verificationScore: 0.2,
+      });
+      expect(v.label).toBe("Not a Claim");
+      expect(v.tone).toBe("neutral");
+      expect(v.detail).toBeTruthy();
+    });
+
+    it("returns Not a Claim for an instruction", () => {
+      const v = getTrustVerdict({
+        status: "unverified",
+        contentType: "instruction",
+        verificationScore: 0.2,
+      });
+      expect(v.label).toBe("Not a Claim");
+    });
+
+    it("still evaluates a rhetorical_claim on its extracted assertion like any other claim", () => {
+      // rhetorical_claim is NOT a non-claim content type - it must fall
+      // through to ordinary evidence-based verdicts, proving the "no
+      // verdict" gate never applies to something with an actual assertion.
+      const v = getTrustVerdict({
+        status: "unverified",
+        contentType: "rhetorical_claim",
+        verificationScore: 0.85,
+      });
+      expect(v.label).toBe("Well Supported");
+    });
+
+    it("flagged status still takes priority over a question's contentType", () => {
+      const v = getTrustVerdict({
+        status: "flagged",
+        contentType: "question",
+      });
+      expect(v.label).toBe("Flagged");
+    });
+
+    it("contradiction evidence still takes priority over a question's contentType", () => {
+      const v = getTrustVerdict({
+        status: "unverified",
+        contentType: "question",
+        contradictionCount: 1,
+      });
+      expect(v.label).toBe("Contradicted");
+    });
+  });
 });

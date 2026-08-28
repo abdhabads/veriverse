@@ -67,6 +67,7 @@ export type TrustVerdict = {
   icon: TrustIconName;
   tone: TrustTone;
   priority: number;
+  detail?: string;
 };
 
 type TrustVerdictInput = {
@@ -75,7 +76,11 @@ type TrustVerdictInput = {
   verificationScore?: number | null;
   contradictionCount?: number;
   groundingSources?: GroundingSourceLike[];
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim" | string;
 };
+
+export const NOT_A_CLAIM_DETAIL =
+  "This reads as a question or instruction rather than a claim - VeriVerse verifies factual assertions. Try rephrasing as a statement to get a verification check.";
 
 export function shouldShowRawTrustStatus(status: string): boolean {
   return ![
@@ -86,7 +91,7 @@ export function shouldShowRawTrustStatus(status: string): boolean {
 }
 
 export function getTrustVerdict(input: TrustVerdictInput): TrustVerdict {
-  const { status, expertDecision, verificationScore, contradictionCount, groundingSources } = input;
+  const { status, expertDecision, verificationScore, contradictionCount, groundingSources, contentType } = input;
 
   // Expert decisions always take highest priority
   if (expertDecision === "verified") {
@@ -116,6 +121,22 @@ export function getTrustVerdict(input: TrustVerdictInput): TrustVerdict {
   // Flagged by moderation
   if (status === "flagged") {
     return { label: "Flagged", icon: "flag", tone: "review", priority: 60 };
+  }
+
+  // Content with no extractable assertion never gets an evidence-based
+  // verdict - grounding was skipped entirely (not run and found weak), so
+  // any score on record is a structural default, not a real signal. This
+  // only applies to "question"/"instruction"; "rhetorical_claim" is fully
+  // evaluated on its extracted assertion and falls through to the normal
+  // evidence-based verdicts below like any other claim.
+  if (contentType === "question" || contentType === "instruction") {
+    return {
+      label: "Not a Claim",
+      icon: "circle",
+      tone: "neutral",
+      priority: 35,
+      detail: NOT_A_CLAIM_DETAIL,
+    };
   }
 
   // Evidence-based verdicts

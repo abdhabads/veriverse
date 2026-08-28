@@ -39,6 +39,7 @@ type ExpertPost = {
   groundingConfidence?: number;
   contradictionCount?: number;
   supportCount?: number;
+  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
   hashtags?: string[];
   author: Author;
 };
@@ -150,6 +151,7 @@ export default function ExpertPage() {
                     verificationScore={post.verificationScore}
                     contradictionCount={post.contradictionCount}
                     groundingSources={post.groundingSources}
+                    contentType={post.contentType}
                   />
                   <span className="vv-verdict-pill vv-verdict-negative">
                     Risk {Number(post.aiRiskScore || 0)}
