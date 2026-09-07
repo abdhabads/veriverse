@@ -596,6 +596,14 @@ async function dryRunReportRow(seed: HistoricalPostSeed) {
 async function applyPost(seed: HistoricalPostSeed, checkpoint: any) {
   checkpoint.attemptCount = (checkpoint.attemptCount ?? 0) + 1;
   checkpoint.lastAttemptAt = new Date();
+  // Persisted immediately, before any stage runs - every invocation of
+  // applyPost for an approved ID must be reflected in durable attemptCount,
+  // including a no-op retry against an already-post_linked checkpoint,
+  // where every stage function below returns early and would otherwise
+  // never call .save() at all. This write touches only this checkpoint
+  // document - no Claim/Evidence/TrustAssessment/Post collection is
+  // involved, and no stage's completion state is altered.
+  await checkpoint.save();
   try {
     await classifyStage(seed, checkpoint);
     if (
