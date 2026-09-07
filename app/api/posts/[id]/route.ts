@@ -101,6 +101,8 @@ export async function PATCH(req: Request, context: RouteContext) {
     post.groundingStatus = screening.groundingStatus;
     post.groundingSummary = screening.groundingSummary;
     post.groundingSources = screening.groundingSources;
+    post.evidenceAssessment = screening.evidenceAssessment;
+    post.claimId = screening.claimId || null;
     post.groundingConfidence = screening.groundingConfidence || 0;
     post.contradictionCount = screening.contradictionCount || 0;
     post.supportCount = screening.supportCount || 0;

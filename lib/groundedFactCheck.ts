@@ -1,6 +1,7 @@
 import { getOpenAIClient } from "@/lib/openai";
 import { truncateAtSentence } from "@/lib/textUtils";
 import { logEvent } from "@/lib/logger";
+import type { EvidenceCandidate } from "@/lib/evidencePersistence";
 
 export type GroundingSource = {
   title: string;
@@ -15,8 +16,45 @@ export type GroundingResult = {
   groundingSummary: string;
   groundingSources: GroundingSource[];
   evidenceRiskAdjustment: number;
+  // Pre-persistence evidence data, one candidate per groundingSources entry,
+  // same order. See lib/evidencePersistence.ts for what happens to these -
+  // groundingSources itself is left completely unchanged for backward
+  // compatibility with Post/UI code that already consumes it.
+  evidenceCandidates: EvidenceCandidate[];
   raw?: unknown;
 };
+
+// Coarse, heuristic confidence in the stance classification itself (distinct
+// from relevance/authority) - see lib/evidencePersistence.ts's header. Higher
+// when the quoted justification was independently verified to actually
+// appear in the research text, lower when the model asserted a stance
+// without a checkable quote behind it.
+function estimateStanceConfidence(
+  stance: GroundingSource["stance"],
+  hasVerifiedEvidence: boolean
+): number {
+  if (stance === "supports" || stance === "contradicts") {
+    return hasVerifiedEvidence ? 0.8 : 0.5;
+  }
+  if (stance === "context") return 0.3;
+  return 0.15; // unknown
+}
+
+// The web_search_preview tool doesn't give us a real relevance score, and
+// the model has already implicitly filtered to sources it judged relevant
+// by including them at all - this is a coarse stand-in for that, not a
+// computed similarity score.
+function estimateRelevanceScore(stance: GroundingSource["stance"]): number {
+  if (stance === "supports" || stance === "contradicts") return 0.7;
+  if (stance === "context") return 0.5;
+  return 0.3; // unknown
+}
+
+function parsePublishedAt(value: unknown): Date | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 function extractDomain(url: string): string {
   try {
@@ -72,11 +110,17 @@ only, no other text.
       "title": string,
       "url": string,
       "stance": "supports" | "contradicts" | "context" | "unknown",
-      "stanceEvidence": string | null
+      "stanceEvidence": string | null,
+      "publishedAt": string | null
     }
   ],
   "evidenceRiskAdjustment": number
 }
+
+"publishedAt" is an ISO 8601 date (YYYY-MM-DD is fine) ONLY if the research
+findings explicitly state when that source was published/updated. If no
+publish date is stated for that source, set "publishedAt" to null - never
+guess or infer one from context.
 
 "stanceEvidence" captures WHY a source got its stance, for display next to
 it. If the research findings above quote or closely paraphrase a specific
@@ -175,57 +219,82 @@ export async function runGroundedFactCheck(
     throw new Error("Grounded fact check returned invalid JSON");
   }
 
-  const groundingSources: GroundingSource[] = Array.isArray(parsed.groundingSources)
-    ? parsed.groundingSources
-        .filter((item: any) => item && typeof item.url === "string")
-        .slice(0, 5)
-        .map((item: any) => {
-          const stance: GroundingSource["stance"] = [
-            "supports",
-            "contradicts",
-            "context",
-            "unknown",
-          ].includes(item.stance)
-            ? item.stance
-            : "unknown";
+  const mappedSources: Array<{ source: GroundingSource; candidate: EvidenceCandidate }> =
+    Array.isArray(parsed.groundingSources)
+      ? parsed.groundingSources
+          .filter((item: any) => item && typeof item.url === "string")
+          .slice(0, 5)
+          .map((item: any) => {
+            const stance: GroundingSource["stance"] = [
+              "supports",
+              "contradicts",
+              "context",
+              "unknown",
+            ].includes(item.stance)
+              ? item.stance
+              : "unknown";
 
-          // Only "supports"/"contradicts" ever get a quoted justification -
-          // "context"/"unknown" means no single phrase confidently decided it.
-          const claimedEvidence =
-            (stance === "supports" || stance === "contradicts") &&
-            typeof item.stanceEvidence === "string" &&
-            item.stanceEvidence.trim()
-              ? item.stanceEvidence.trim()
-              : null;
+            // Only "supports"/"contradicts" ever get a quoted justification -
+            // "context"/"unknown" means no single phrase confidently decided it.
+            const claimedEvidence =
+              (stance === "supports" || stance === "contradicts") &&
+              typeof item.stanceEvidence === "string" &&
+              item.stanceEvidence.trim()
+                ? item.stanceEvidence.trim()
+                : null;
 
-          // The model is asked to quote verbatim, but nothing stops it from
-          // paraphrasing instead - which would show fabricated text in
-          // quotation marks attributed to a real source. Reject any quote
-          // that doesn't actually occur in the research text it came from;
-          // showing nothing is strictly better than showing an unverifiable
-          // quote.
-          let stanceEvidence: string | null = null;
-          if (claimedEvidence) {
-            if (isQuoteVerifiedInText(claimedEvidence, researchText)) {
-              stanceEvidence = truncateAtSentence(claimedEvidence, 240);
-            } else {
-              logEvent("GROUNDING_STANCE_EVIDENCE_UNVERIFIED", {
-                url: item.url.trim(),
-                stance,
-                claimedEvidence: claimedEvidence.slice(0, 300),
-              });
+            // The model is asked to quote verbatim, but nothing stops it from
+            // paraphrasing instead - which would show fabricated text in
+            // quotation marks attributed to a real source. Reject any quote
+            // that doesn't actually occur in the research text it came from;
+            // showing nothing is strictly better than showing an unverifiable
+            // quote.
+            let stanceEvidence: string | null = null;
+            let evidenceVerified = false;
+            if (claimedEvidence) {
+              if (isQuoteVerifiedInText(claimedEvidence, researchText)) {
+                stanceEvidence = truncateAtSentence(claimedEvidence, 240);
+                evidenceVerified = true;
+              } else {
+                logEvent("GROUNDING_STANCE_EVIDENCE_UNVERIFIED", {
+                  url: item.url.trim(),
+                  stance,
+                  claimedEvidence: claimedEvidence.slice(0, 300),
+                });
+              }
             }
-          }
 
-          return {
-            title: typeof item.title === "string" ? item.title.trim() : "",
-            url: item.url.trim(),
-            domain: extractDomain(item.url.trim()),
-            stance,
-            stanceEvidence,
-          };
-        })
-    : [];
+            const url = item.url.trim();
+            const domain = extractDomain(url);
+
+            return {
+              source: {
+                title: typeof item.title === "string" ? item.title.trim() : "",
+                url,
+                domain,
+                stance,
+                stanceEvidence,
+              },
+              candidate: {
+                sourceUrl: url,
+                domain,
+                publishedAt: parsePublishedAt(item.publishedAt),
+                stance,
+                stanceConfidence: estimateStanceConfidence(stance, evidenceVerified),
+                // Genuinely unavailable on this path: the only text we hold is
+                // the model's research narrative, not the source page itself,
+                // so a span here would misrepresent an offset into the
+                // narrative as an offset into the source - see
+                // models/EvidenceObject.ts.
+                evidenceText: stanceEvidence,
+                evidenceStart: null,
+                evidenceEnd: null,
+                relevanceScore: estimateRelevanceScore(stance),
+                provider: "openai" as const,
+              },
+            };
+          })
+      : [];
 
   return {
     groundingStatus:
@@ -234,7 +303,8 @@ export async function runGroundedFactCheck(
       typeof parsed.groundingSummary === "string"
         ? truncateAtSentence(parsed.groundingSummary.trim(), 600)
         : "",
-    groundingSources,
+    groundingSources: mappedSources.map((entry) => entry.source),
+    evidenceCandidates: mappedSources.map((entry) => entry.candidate),
     evidenceRiskAdjustment: clampAdjustment(parsed.evidenceRiskAdjustment || 0),
     raw: { research: researchText, formatted: parsed },
   };

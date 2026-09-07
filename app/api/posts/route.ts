@@ -90,6 +90,8 @@ export async function POST(req: Request) {
       groundingStatus: screening.groundingStatus,
       groundingSummary: screening.groundingSummary,
       groundingSources: screening.groundingSources,
+      evidenceAssessment: screening.evidenceAssessment,
+      claimId: screening.claimId || null,
       groundingConfidence: screening.groundingConfidence || 0,
       contradictionCount: screening.contradictionCount || 0,
       supportCount: screening.supportCount || 0,

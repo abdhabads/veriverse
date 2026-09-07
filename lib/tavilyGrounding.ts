@@ -4,6 +4,7 @@
 // Add TAVILY_API_KEY to .env.local
 
 import type { GroundingResult, GroundingSource } from "@/lib/groundedFactCheck";
+import type { EvidenceCandidate } from "@/lib/evidencePersistence";
 
 function extractDomain(url: string): string {
   try {
@@ -64,14 +65,21 @@ function extractClaimKeywords(claim: string): string[] {
   );
 }
 
-// Captures the sentence in `original` (natural case) surrounding the first
-// occurrence of `needle` in `haystackLower` (lowercased, same indexing as
-// `original`). Falls back to the whole slice if no boundary is found -
-// used to turn "a signal matched somewhere in this portion" into an actual
-// quotable excerpt for stanceEvidence.
-function findSentence(original: string, haystackLower: string, needle: string): string {
+// Same match as findSentence, but also returns the trimmed excerpt's exact
+// character offsets within `original` - real provenance for evidenceStart/
+// evidenceEnd, since (unlike the OpenAI path) `original` here is content
+// this function's caller actually retrieved, not an LLM's narrative about it.
+function findSentenceSpan(
+  original: string,
+  haystackLower: string,
+  needle: string
+): { text: string; start: number; end: number } {
   const idx = haystackLower.indexOf(needle);
-  if (idx === -1) return original.trim();
+  if (idx === -1) {
+    const text = original.trim();
+    const start = Math.max(0, original.indexOf(text));
+    return { text, start, end: start + text.length };
+  }
 
   const before = haystackLower.slice(0, idx);
   const boundary = Math.max(
@@ -80,14 +88,19 @@ function findSentence(original: string, haystackLower: string, needle: string): 
     before.lastIndexOf("? "),
     before.lastIndexOf("\n")
   );
-  const start = boundary === -1 ? 0 : boundary + 2;
+  const rawStart = boundary === -1 ? 0 : boundary + 2;
 
   const afterMatchStart = idx + needle.length;
   const rest = haystackLower.slice(afterMatchStart);
   const endOffset = rest.search(/[.!?](\s|$)/);
-  const end = endOffset === -1 ? original.length : afterMatchStart + endOffset + 1;
+  const rawEnd = endOffset === -1 ? original.length : afterMatchStart + endOffset + 1;
 
-  return original.slice(start, end).trim();
+  const rawSlice = original.slice(rawStart, rawEnd);
+  const text = rawSlice.trim();
+  const leadingWhitespace = rawSlice.length - rawSlice.trimStart().length;
+  const start = rawStart + leadingWhitespace;
+
+  return { text, start, end: start + text.length };
 }
 
 // Of several signals that matched the same portion, picks the one that
@@ -103,7 +116,20 @@ function earliestMatch(portion: string, matches: string[]): string {
 type StanceClassification = {
   stance: GroundingSource["stance"];
   stanceEvidence: string | null;
+  // Offsets into the original `content` passed to classifyStanceWithEvidence
+  // - real provenance, since that content is what this function's caller
+  // actually retrieved (unlike the OpenAI path's LLM-narrative intermediary).
+  // Null whenever stanceEvidence is null.
+  evidenceStart: number | null;
+  evidenceEnd: number | null;
+  // How the classification was reached - used by runTavilyGrounding to
+  // derive a heuristic stanceConfidence (title-level lexical matches are
+  // more reliable than body-level, which are more reliable than topic
+  // overlap alone).
+  matchLevel: "title" | "body" | "topic_overlap" | "none";
 };
+
+const NO_EVIDENCE = { stanceEvidence: null, evidenceStart: null, evidenceEnd: null } as const;
 
 // Topic-overlap fallback: for claims outside the medical vocabulary above,
 // only ever asserts "contradicts" (from explicit falsity language) or
@@ -117,25 +143,33 @@ function classifyByTopicOverlap(
   claim: string
 ): StanceClassification {
   const keywords = extractClaimKeywords(claim);
-  if (keywords.length === 0) return { stance: "unknown", stanceEvidence: null };
+  if (keywords.length === 0) {
+    return { stance: "unknown", matchLevel: "none", ...NO_EVIDENCE };
+  }
 
   const matched = keywords.filter((k) => bodyPortion.includes(k));
   const overlapRatio = matched.length / keywords.length;
 
-  if (overlapRatio < 0.4) return { stance: "unknown", stanceEvidence: null };
+  if (overlapRatio < 0.4) {
+    return { stance: "unknown", matchLevel: "none", ...NO_EVIDENCE };
+  }
 
   const contradictionSignal = GENERIC_CONTRADICTION_SIGNALS.find((s) =>
     bodyPortion.includes(s)
   );
   if (contradictionSignal) {
+    const span = findSentenceSpan(originalBodyPortion, bodyPortion, contradictionSignal);
     return {
       stance: "contradicts",
-      stanceEvidence: findSentence(originalBodyPortion, bodyPortion, contradictionSignal),
+      stanceEvidence: span.text,
+      evidenceStart: span.start,
+      evidenceEnd: span.end,
+      matchLevel: "topic_overlap",
     };
   }
 
   // Keyword overlap alone isn't one quotable phrase - don't invent one.
-  return { stance: "context", stanceEvidence: null };
+  return { stance: "context", matchLevel: "topic_overlap", ...NO_EVIDENCE };
 }
 
 export function classifyStance(
@@ -153,7 +187,7 @@ export function classifyStanceWithEvidence(
   content: string,
   query: string
 ): StanceClassification {
-  if (!content) return { stance: "unknown", stanceEvidence: null };
+  if (!content) return { stance: "unknown", matchLevel: "none", ...NO_EVIDENCE };
 
   // Split title from body - title is passed first in "title + content" string.
   // Title signals are more reliable than body signals so weight them separately.
@@ -189,13 +223,17 @@ export function classifyStanceWithEvidence(
   );
 
   if (titleContradictionMatches.length >= 1) {
+    const span = findSentenceSpan(
+      originalTitlePortion,
+      titlePortion,
+      earliestMatch(titlePortion, titleContradictionMatches)
+    );
     return {
       stance: "contradicts",
-      stanceEvidence: findSentence(
-        originalTitlePortion,
-        titlePortion,
-        earliestMatch(titlePortion, titleContradictionMatches)
-      ),
+      stanceEvidence: span.text,
+      evidenceStart: span.start,
+      evidenceEnd: span.end,
+      matchLevel: "title",
     };
   }
 
@@ -205,13 +243,17 @@ export function classifyStanceWithEvidence(
   );
 
   if (titleSupportMatches.length >= 2) {
+    const span = findSentenceSpan(
+      originalTitlePortion,
+      titlePortion,
+      earliestMatch(titlePortion, titleSupportMatches)
+    );
     return {
       stance: "supports",
-      stanceEvidence: findSentence(
-        originalTitlePortion,
-        titlePortion,
-        earliestMatch(titlePortion, titleSupportMatches)
-      ),
+      stanceEvidence: span.text,
+      evidenceStart: span.start,
+      evidenceEnd: span.end,
+      matchLevel: "title",
     };
   }
 
@@ -226,29 +268,37 @@ export function classifyStanceWithEvidence(
   const supportScore = supportMatches.length;
 
   if (contradictionScore >= 1 && contradictionScore >= supportScore) {
+    const span = findSentenceSpan(
+      originalBodyPortion,
+      bodyPortion,
+      earliestMatch(bodyPortion, contradictionMatches)
+    );
     return {
       stance: "contradicts",
-      stanceEvidence: findSentence(
-        originalBodyPortion,
-        bodyPortion,
-        earliestMatch(bodyPortion, contradictionMatches)
-      ),
+      stanceEvidence: span.text,
+      evidenceStart: span.start,
+      evidenceEnd: span.end,
+      matchLevel: "body",
     };
   }
   if (supportScore >= 1 && supportScore > contradictionScore) {
+    const span = findSentenceSpan(
+      originalBodyPortion,
+      bodyPortion,
+      earliestMatch(bodyPortion, supportMatches)
+    );
     return {
       stance: "supports",
-      stanceEvidence: findSentence(
-        originalBodyPortion,
-        bodyPortion,
-        earliestMatch(bodyPortion, supportMatches)
-      ),
+      stanceEvidence: span.text,
+      evidenceStart: span.start,
+      evidenceEnd: span.end,
+      matchLevel: "body",
     };
   }
   if (contradictionScore > 0 || supportScore > 0) {
     // Tied contradiction/support signals - "context" here isn't one
     // triggering phrase, so don't manufacture an excerpt for it.
-    return { stance: "context", stanceEvidence: null };
+    return { stance: "context", matchLevel: "body", ...NO_EVIDENCE };
   }
 
   // No clinical/medical signal at all - fall back to generic topic-overlap
@@ -342,6 +392,7 @@ export async function runTavilyGrounding(
     url: string;
     content: string;
     score: number;
+    published_date?: string;
   }> = [];
 
   await Promise.all(
@@ -386,25 +437,62 @@ export async function runTavilyGrounding(
     return true;
   }).slice(0, 5);
 
-  const groundingSources: GroundingSource[] = dedupedResults
-    .filter(r => r.url && r.title)
-    .map(r => {
-      const { stance, stanceEvidence } = classifyStanceWithEvidence(
-        (r.title ?? "") + " " + (r.content ?? ""),
-        content
-      );
-      return {
-        title: r.title?.trim() ?? "",
-        url: r.url?.trim() ?? "",
-        domain: extractDomain(r.url ?? ""),
-        stance,
-        stanceEvidence,
-      };
-    });
+  const mappedSources: Array<{ source: GroundingSource; candidate: EvidenceCandidate }> =
+    dedupedResults
+      .filter(r => r.url && r.title)
+      .map(r => {
+        const classification = classifyStanceWithEvidence(
+          (r.title ?? "") + " " + (r.content ?? ""),
+          content
+        );
+        const url = r.url?.trim() ?? "";
+        const domain = extractDomain(r.url ?? "");
+        const publishedAt =
+          typeof r.published_date === "string" && r.published_date.trim()
+            ? new Date(r.published_date)
+            : null;
+
+        return {
+          source: {
+            title: r.title?.trim() ?? "",
+            url,
+            domain,
+            stance: classification.stance,
+            stanceEvidence: classification.stanceEvidence,
+          },
+          candidate: {
+            sourceUrl: url,
+            domain,
+            publishedAt: publishedAt && !Number.isNaN(publishedAt.getTime()) ? publishedAt : null,
+            stance: classification.stance,
+            stanceConfidence: estimateTavilyStanceConfidence(
+              classification.stance,
+              classification.matchLevel
+            ),
+            // Real provenance: an offset into content this call actually
+            // retrieved (r.content, via Tavily's include_raw_content), not
+            // an LLM's paraphrase of it.
+            evidenceText: classification.stanceEvidence,
+            evidenceStart: classification.evidenceStart,
+            evidenceEnd: classification.evidenceEnd,
+            // Tavily's own reported relevance for this result, used as-is
+            // rather than re-derived - see EvidenceObject.relevanceScore.
+            relevanceScore:
+              typeof r.score === "number" && !Number.isNaN(r.score)
+                ? Math.max(0, Math.min(1, r.score))
+                : 0.5,
+            provider: "tavily" as const,
+          },
+        };
+      });
+
+  const groundingSources = mappedSources.map((entry) => entry.source);
+  const evidenceCandidates = mappedSources.map((entry) => entry.candidate);
 
   // Build summary from classified sources
   const contradictingSources = groundingSources.filter(s => s.stance === "contradicts");
   const supportingSources = groundingSources.filter(s => s.stance === "supports");
+  const confidentlyStancedCount = contradictingSources.length + supportingSources.length;
 
   let groundingSummary = "";
   if (contradictingSources.length > 0 && supportingSources.length === 0) {
@@ -419,8 +507,14 @@ export async function runTavilyGrounding(
     groundingSummary = "";
   }
 
+  // Phase 7: Tavily's lexical classifier should not claim the same epistemic
+  // weight as a source list where every item is merely "context"/"unknown" -
+  // retrieving pages is not the same as having determined anything about the
+  // claim. "checked" here means at least one source could be confidently
+  // related to the claim; otherwise this reports the same uncertain state as
+  // finding no sources at all, instead of forcing a verdict.
   const groundingStatus =
-    groundingSources.length > 0 ? "checked" : "insufficient_evidence";
+    confidentlyStancedCount > 0 ? "checked" : "insufficient_evidence";
 
   const evidenceRiskAdjustment = deriveRiskAdjustment(groundingSources);
 
@@ -428,7 +522,21 @@ export async function runTavilyGrounding(
     groundingStatus,
     groundingSummary,
     groundingSources,
+    evidenceCandidates,
     evidenceRiskAdjustment,
     raw: { results: dedupedResults },
   };
+}
+
+function estimateTavilyStanceConfidence(
+  stance: GroundingSource["stance"],
+  matchLevel: StanceClassification["matchLevel"]
+): number {
+  if (stance === "supports" || stance === "contradicts") {
+    if (matchLevel === "title") return 0.75;
+    if (matchLevel === "body") return 0.55;
+    return 0.4; // topic_overlap - lexical fallback, lower precision
+  }
+  if (stance === "context") return 0.3;
+  return 0.1; // unknown
 }

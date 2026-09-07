@@ -10,6 +10,35 @@ const GroundingSourceSchema = new Schema({
     default: "unknown",
   },
   stanceEvidence: { type: String, default: null },
+  // Sprint 1: optional ref to the structured EvidenceObject this embedded
+  // summary was derived from. Additive and backward-compatible - absent on
+  // every post created before this sprint, and existing readers of this
+  // sub-document (GroundedEvidencePanel, exports) ignore unknown fields.
+  evidenceObjectId: {
+    type: Schema.Types.ObjectId,
+    ref: "EvidenceObject",
+    default: null,
+  },
+}, { _id: false });
+
+// Sprint 1: non-authoritative, explainable evidence summary (see
+// lib/evidenceScoring.ts) computed alongside the existing count-based
+// verificationScore, not in place of it. Optional/unset on posts created
+// before this sprint or whenever evidence persistence failed for a post.
+const EvidenceAssessmentSchema = new Schema({
+  supportStrength: {
+    type: String,
+    enum: ["none", "weak", "moderate", "strong"],
+  },
+  contradictionStrength: {
+    type: String,
+    enum: ["none", "weak", "moderate", "strong"],
+  },
+  independentSupportingCount: { type: Number },
+  independentContradictingCount: { type: Number },
+  supportWeight: { type: Number },
+  contradictionWeight: { type: Number },
+  explanation: { type: String },
 }, { _id: false });
 
 const PostSchema = new Schema({
@@ -23,6 +52,15 @@ const PostSchema = new Schema({
     required: true,
     trim: true,
     maxlength: 1000,
+  },
+  // Sprint 2: the underlying proposition this post asserts (models/Claim.ts),
+  // distinct from the post itself - multiple posts can share one claimId.
+  // Additive/optional: null for content with nothing to verify (question/
+  // instruction) and for every post created before this sprint.
+  claimId: {
+    type: Schema.Types.ObjectId,
+    ref: "Claim",
+    default: null,
   },
   status: {
     type: String,
@@ -122,6 +160,10 @@ const PostSchema = new Schema({
   groundingSources: {
     type: [GroundingSourceSchema],
     default: [],
+  },
+  evidenceAssessment: {
+    type: EvidenceAssessmentSchema,
+    default: undefined,
   },
   groundingConfidence: {
     type: Number,

@@ -111,6 +111,31 @@ const PostTrustSnapshotSchema = new Schema(
       type: String,
       default: "pending",
     },
+
+    // Sprint 3 (Phase 7/8): cross-reference to the Claim assessment that was
+    // CURRENT at the moment this post-level snapshot was taken - deliberately
+    // NOT the same number as trustDecisionVersion above. A claim can advance
+    // through many assessment versions between two of a post's own trust
+    // decisions (or vice versa: many posts can reference the same claim
+    // assessment version). This is what lets a historical PostTrustSnapshot
+    // stay reproducible even after the claim receives new evidence later -
+    // see lib/trustAssessment.ts and the Sprint 3 report's Phase 7 section.
+    // All additive/optional: null for snapshots taken before this sprint or
+    // for posts with no claimId at all.
+    claimId: {
+      type: Schema.Types.ObjectId,
+      ref: "Claim",
+      default: null,
+    },
+    claimAssessmentVersionAtSnapshot: {
+      type: Number,
+      default: null,
+    },
+    trustAssessmentId: {
+      type: Schema.Types.ObjectId,
+      ref: "TrustAssessment",
+      default: null,
+    },
   },
   { timestamps: true }
 );
