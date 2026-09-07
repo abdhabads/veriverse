@@ -90,10 +90,6 @@ export async function findOrCreateClaim(claimText: string): Promise<FindOrCreate
   const findStartedAt = Date.now();
   try {
     possibleDuplicateOf = await findPossibleDuplicate(identity);
-    logEvent("CLAIM_DIAGNOSTIC_FIND_SUCCESS", {
-      operation: "findPossibleDuplicate",
-      elapsedMs: Date.now() - findStartedAt,
-    });
   } catch (findError: unknown) {
     logEvent("CLAIM_DIAGNOSTIC_FIND_FAILED", {
       operation: "findPossibleDuplicate",
@@ -117,10 +113,6 @@ export async function findOrCreateClaim(claimText: string): Promise<FindOrCreate
       firstSeenAt: new Date(),
       lastEvaluatedAt: null,
       currentAssessmentVersion: 1,
-    });
-    logEvent("CLAIM_DIAGNOSTIC_CREATE_SUCCESS", {
-      operation: "Claim.create",
-      elapsedMs: Date.now() - createStartedAt,
     });
     return { claim, created: true, matchTier: "new" };
   } catch (err: unknown) {
