@@ -24,6 +24,14 @@ export function buildTrustEventKey(params: {
   return `post:${params.postId}:v${params.trustDecisionVersion}:${params.eventType}`;
 }
 
+// Restored for lib/trustSettlementGuard.ts, which still calls this directly -
+// that file is outside this reconciliation's scope and was intentionally left
+// untouched, so this stays available for it exactly as it always was.
+export async function hasTrustEvent(eventKey: string) {
+  const existing = await TrustEvent.findOne({ eventKey }).select("_id");
+  return Boolean(existing);
+}
+
 type ReserveTrustEventParams = {
   postId: string;
   trustDecisionVersion: number;
