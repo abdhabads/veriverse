@@ -207,6 +207,17 @@ async function classify(seed: HistoricalPostSeed): Promise<ClassificationResult>
   };
 }
 
+// The skip invariant must hold on classifiedContentType itself, independent
+// of how the historical eligibility bucket was assigned. A stored "claim"
+// post always has classifiedContentType "claim" (see classify() above), so
+// this is a no-op for that bucket - but a needs_manual_review post whose
+// live reclassification comes back "question"/"instruction" must be
+// prevented from entering claim resolution at all, not merely left to rely
+// on claimResolvedStage's defensive throw.
+function isNonClaimContentType(contentType: ContentType): boolean {
+  return contentType === "question" || contentType === "instruction";
+}
+
 // Apply-path only wrapper: persists classify()'s result onto the checkpoint.
 // Never called from the dry-run path.
 async function classifyStage(seed: HistoricalPostSeed, checkpoint: any) {
@@ -532,8 +543,20 @@ async function postLinkedStage(seed: HistoricalPostSeed, checkpoint: any) {
 async function dryRunReportRow(seed: HistoricalPostSeed) {
   const classification = await classify(seed);
 
-  if (classification.eligibility === "skip_question" || classification.eligibility === "skip_instruction") {
-    return { postId: seed.postId, action: classification.eligibility.toUpperCase(), eligibility: classification.eligibility };
+  if (
+    classification.eligibility === "skip_question" ||
+    classification.eligibility === "skip_instruction" ||
+    isNonClaimContentType(classification.classifiedContentType)
+  ) {
+    const action =
+      classification.classifiedContentType === "question" ? "SKIP_QUESTION" : "SKIP_INSTRUCTION";
+    return {
+      postId: seed.postId,
+      action,
+      eligibility: classification.eligibility,
+      classificationSource: classification.classificationSource,
+      classifiedContentType: classification.classifiedContentType,
+    };
   }
 
   const plan = resolveGroundingPlan({
@@ -575,7 +598,15 @@ async function applyPost(seed: HistoricalPostSeed, checkpoint: any) {
   checkpoint.lastAttemptAt = new Date();
   try {
     await classifyStage(seed, checkpoint);
-    if (checkpoint.eligibility === "skip_question" || checkpoint.eligibility === "skip_instruction") {
+    if (
+      checkpoint.eligibility === "skip_question" ||
+      checkpoint.eligibility === "skip_instruction" ||
+      isNonClaimContentType(checkpoint.classifiedContentType)
+    ) {
+      // Invariant: classifiedContentType === question/instruction always
+      // means skip, regardless of which eligibility bucket a
+      // needs_manual_review post landed in - this must hold independently
+      // of the historical stored/live-reclassification split.
       return { postId: seed.postId, result: "SKIPPED", stage: checkpoint.stage };
     }
     await claimResolvedStage(seed, checkpoint);
