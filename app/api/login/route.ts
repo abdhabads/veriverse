@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { verifyCaptchaToken } from "@/lib/captcha";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
-import { getRateLimitKey } from "@/lib/requestIdentity";
+import { getRateLimitKey, getClientIp } from "@/lib/requestIdentity";
 import { cleanString, isValidEmail } from "@/lib/validation";
 import { fail } from "@/lib/apiResponse";
 import { NextResponse } from "next/server";
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       return fail("Please enter a valid email address.", 400);
     }
 
-    const captchaCheck = await verifyCaptchaToken(captchaToken);
+    const captchaCheck = await verifyCaptchaToken(captchaToken, getClientIp(req));
     if (!captchaCheck.success) {
       return fail(captchaCheck.message || "Captcha verification failed", 400);
     }

@@ -3,7 +3,7 @@ import User from "@/models/User";
 import bcrypt from "bcryptjs";
 import { verifyCaptchaToken } from "@/lib/captcha";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
-import { getRateLimitKey } from "@/lib/requestIdentity";
+import { getRateLimitKey, getClientIp } from "@/lib/requestIdentity";
 import {
   cleanString,
   escapeRegexLiteral,
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       return fail("Password must be at least 8 characters.", 400);
     }
 
-    const captchaCheck = await verifyCaptchaToken(captchaToken);
+    const captchaCheck = await verifyCaptchaToken(captchaToken, getClientIp(req));
     if (!captchaCheck.success) {
       return fail(captchaCheck.message || "Captcha verification failed", 400);
     }

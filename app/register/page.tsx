@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import Toast from "@/components/Toast";
 import Logo from "@/components/Logo";
+import TurnstileWidget, { TurnstileWidgetHandle } from "@/components/TurnstileWidget";
 import { getErrorMessage } from "@/lib/apiClient";
+
+const CAPTCHA_CONFIGURED = Boolean(process.env.NEXT_PUBLIC_CAPTCHA_SITE_KEY);
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -14,11 +17,14 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("error");
+  const turnstileRef = useRef<TurnstileWidgetHandle>(null);
+
+  const canSubmit = !isSubmitting && (!CAPTCHA_CONFIGURED || Boolean(captchaToken));
 
   const handleRegister = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -35,6 +41,8 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!canSubmit) return;
+
     setIsSubmitting(true);
 
     try {
@@ -42,7 +50,7 @@ export default function RegisterPage() {
         username: username.trim(),
         email: email.trim(),
         password,
-        captchaToken,
+        captchaToken: captchaToken ?? "",
         agreedToTerms: true,
       });
 
@@ -52,6 +60,10 @@ export default function RegisterPage() {
     } catch (error: unknown) {
       setMessageType("error");
       setMessage(getErrorMessage(error, "Registration failed"));
+      // Single-use token already consumed/rejected by the server (e.g.
+      // duplicate email, validation failure) - get a fresh one so the user
+      // can retry without reloading the page.
+      turnstileRef.current?.reset();
     } finally {
       setIsSubmitting(false);
     }
@@ -163,23 +175,11 @@ export default function RegisterPage() {
                 />
               </div>
 
-              <div>
-                <label className="vv-label block mb-1" htmlFor="register-captcha-token">
-                  Captcha Token
-                </label>
-                <input
-                  id="register-captcha-token"
-                  className="vv-input"
-                  placeholder="human-verified"
-                  value={captchaToken}
-                  onChange={(e) => setCaptchaToken(e.target.value)}
-                  required
-                />
-              </div>
-
-              <p className="text-xs text-slate-500 my-1">
-                Enter <span className="font-semibold">human-verified</span> when CAPTCHA is enabled in local development.
-              </p>
+              {CAPTCHA_CONFIGURED && (
+                <div>
+                  <TurnstileWidget ref={turnstileRef} onTokenChange={setCaptchaToken} />
+                </div>
+              )}
 
               <label className="mt-2 flex items-start gap-3 rounded-2xl border border-veriverse-border bg-white/60 px-3 py-3 text-sm text-slate-700">
                 <input
@@ -193,8 +193,12 @@ export default function RegisterPage() {
                 </span>
               </label>
 
-              <button type="submit" disabled={isSubmitting} className="vv-btn-accent w-full mt-2">
-                {isSubmitting ? "Creating account..." : "Create account"}
+              <button type="submit" disabled={!canSubmit} className="vv-btn-accent w-full mt-2">
+                {isSubmitting
+                  ? "Creating account..."
+                  : CAPTCHA_CONFIGURED && !captchaToken
+                  ? "Complete verification to continue"
+                  : "Create account"}
               </button>
             </form>
 

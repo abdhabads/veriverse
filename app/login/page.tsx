@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import Toast from "@/components/Toast";
 import Logo from "@/components/Logo";
+import TurnstileWidget, { TurnstileWidgetHandle } from "@/components/TurnstileWidget";
 import { api, getErrorMessage } from "@/lib/apiClient";
+
+const CAPTCHA_CONFIGURED = Boolean(process.env.NEXT_PUBLIC_CAPTCHA_SITE_KEY);
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("error");
+  const turnstileRef = useRef<TurnstileWidgetHandle>(null);
 
   useEffect(() => {
     let active = true;
@@ -37,12 +42,17 @@ export default function LoginPage() {
     };
   }, [router]);
 
+  const canSubmit = !isSubmitting && (!CAPTCHA_CONFIGURED || Boolean(captchaToken));
+
   const handleLogin = async () => {
+    if (!canSubmit) return;
+    setIsSubmitting(true);
+
     try {
       const res = await axios.post("/api/login", {
         email: email.trim(),
         password,
-        captchaToken,
+        captchaToken: captchaToken ?? "",
       });
 
       localStorage.setItem("user", JSON.stringify(res.data.user));
@@ -52,6 +62,13 @@ export default function LoginPage() {
     } catch (error: unknown) {
       setMessageType("error");
       setMessage(getErrorMessage(error, "Login failed"));
+      // Turnstile tokens are single-use - the server has already consumed
+      // (or rejected) this one, so a retry needs a fresh one. This covers
+      // wrong-password, network errors, and server-side captcha rejection
+      // alike, without requiring a page refresh.
+      turnstileRef.current?.reset();
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -124,26 +141,24 @@ export default function LoginPage() {
                 />
               </div>
 
-              <div>
-                <label className="vv-label block mb-1" htmlFor="login-captcha-token">
-                  Captcha Token
-                </label>
-                <input
-                  id="login-captcha-token"
-                  className="vv-input"
-                  placeholder="human-verified"
-                  value={captchaToken}
-                  onChange={(e) => setCaptchaToken(e.target.value)}
-                />
-              </div>
+              {CAPTCHA_CONFIGURED && (
+                <div className="mt-2">
+                  <TurnstileWidget ref={turnstileRef} onTokenChange={setCaptchaToken} />
+                </div>
+              )}
             </div>
 
-            <p className="text-xs text-slate-500 my-4">
-              Enter <span className="font-semibold">human-verified</span> when CAPTCHA is enabled in local development.
-            </p>
-
-            <button onClick={handleLogin} className="vv-btn-primary w-full">
-              Login
+            <button
+              onClick={handleLogin}
+              className="vv-btn-primary w-full mt-4"
+              disabled={!canSubmit}
+              aria-busy={isSubmitting}
+            >
+              {isSubmitting
+                ? "Logging in…"
+                : CAPTCHA_CONFIGURED && !captchaToken
+                ? "Complete verification to continue"
+                : "Login"}
             </button>
 
             <div className="mt-4 flex justify-end">
