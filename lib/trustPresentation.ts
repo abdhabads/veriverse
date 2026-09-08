@@ -139,7 +139,11 @@ export function getTrustVerdict(input: TrustVerdictInput): TrustVerdict {
     };
   }
 
-  // Evidence-based verdicts
+  // Evidence-based verdicts. A null score means assessment genuinely hasn't
+  // occurred yet ("Unverified"); any non-null score means evaluation DID
+  // run and landed somewhere on the scale - even a low result (including
+  // exactly 0) is evaluated evidence, not an absence of assessment, so it
+  // must never share a label with the true not-yet-evaluated case.
   const score = verificationScore ?? null;
   if (score !== null && score >= 0.8) {
     return { label: "Well Supported", icon: "check", tone: "positive", priority: 50 };
@@ -147,10 +151,10 @@ export function getTrustVerdict(input: TrustVerdictInput): TrustVerdict {
   if (score !== null && score >= 0.6) {
     return { label: "Supported", icon: "check", tone: "positive", priority: 40 };
   }
-  if (score !== null && score > 0 && score < 0.3) {
+  if (score !== null) {
     return { label: "Weak Evidence", icon: "x", tone: "negative", priority: 30 };
   }
 
-  // Default
+  // Default - score is genuinely null, nothing has been evaluated yet.
   return { label: "Unverified", icon: "circle", tone: "neutral", priority: 0 };
 }
