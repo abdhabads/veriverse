@@ -31,6 +31,14 @@ export type GroundingSource = {
   stance: "supports" | "contradicts" | "context" | "unknown";
 };
 
+export type EvidenceAssessment = {
+  supportStrength?: "none" | "weak" | "moderate" | "strong";
+  contradictionStrength?: "none" | "weak" | "moderate" | "strong";
+  independentSupportingCount?: number;
+  independentContradictingCount?: number;
+  explanation?: string;
+};
+
 export type Comment = {
   _id: string;
   author: User;
@@ -70,6 +78,7 @@ export type Post = {
   groundingConfidence?: number;
   contradictionCount?: number;
   supportCount?: number;
+  evidenceAssessment?: EvidenceAssessment;
   contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
   needsExpertReview?: boolean;
   expertDecision?: string;
@@ -268,11 +277,13 @@ export default function PostCard({
         <button
           type="button"
           onClick={() => onToggleEvidence(post._id)}
+          aria-expanded={isEvidenceExpanded}
+          aria-controls={`evidence-panel-${post._id}`}
           className="mt-4 w-full rounded-[24px] border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white"
         >
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-medium text-veriverse-dark">
-              Grounding evidence
+              Why this assessment?
             </span>
             <ActionIcon
               name="chevronDown"
@@ -284,7 +295,7 @@ export default function PostCard({
         </button>
 
         {isEvidenceExpanded && (
-          <div className="mt-2">
+          <div id={`evidence-panel-${post._id}`} className="mt-2">
             <GroundedEvidencePanel
               groundingStatus={post.groundingStatus}
               groundingSummary={post.groundingSummary}
@@ -292,6 +303,7 @@ export default function PostCard({
               groundingConfidence={post.groundingConfidence}
               contradictionCount={post.contradictionCount}
               supportCount={post.supportCount}
+              evidenceAssessment={post.evidenceAssessment}
               verificationScore={post.verificationScore}
               maxSources={3}
               compact

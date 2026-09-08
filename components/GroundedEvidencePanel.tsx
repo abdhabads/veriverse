@@ -11,6 +11,14 @@ type GroundingSource = {
   stanceEvidence?: string | null;
 };
 
+type EvidenceAssessment = {
+  supportStrength?: "none" | "weak" | "moderate" | "strong";
+  contradictionStrength?: "none" | "weak" | "moderate" | "strong";
+  independentSupportingCount?: number;
+  independentContradictingCount?: number;
+  explanation?: string;
+};
+
 type GroundedEvidencePanelProps = {
   groundingStatus?: "not_checked" | "checked" | "insufficient_evidence";
   groundingSummary?: string;
@@ -18,6 +26,13 @@ type GroundedEvidencePanelProps = {
   groundingConfidence?: number;
   contradictionCount?: number;
   supportCount?: number;
+  // When present, its explanation and independent counts are preferred over
+  // the cruder groundingSummary/supportCount/contradictionCount fields -
+  // this is the same underlying assessment, just a more explainable, less
+  // duplicate-prone version of it (see models/Post.ts's EvidenceAssessmentSchema
+  // comment). Falls back cleanly to the older fields when absent, so legacy
+  // posts created before this field existed still render correctly.
+  evidenceAssessment?: EvidenceAssessment;
   verificationScore?: number | null;
   maxSources?: number;
   compact?: boolean;
@@ -57,11 +72,18 @@ function formatSourceDomainSummary(sourceCount: number, uniqueDomainCount: numbe
   return `${sourcesLabel} · ${uniqueDomainCount} domain${uniqueDomainCount === 1 ? "" : "s"}`;
 }
 
-function getEvidenceSummary(
+export function getEvidenceSummary(
   groundingStatus?: GroundedEvidencePanelProps["groundingStatus"],
   groundingSummary?: string,
-  sourceCount?: number
+  sourceCount?: number,
+  explanation?: string
 ) {
+  // The evidence-assessment explanation is a more explainable, purpose-built
+  // summary of the same assessment - prefer it when present.
+  if (explanation?.trim()) {
+    return explanation.trim();
+  }
+
   if (groundingSummary?.trim()) {
     return groundingSummary.trim();
   }
@@ -74,7 +96,7 @@ function getEvidenceSummary(
     return "Supporting source context has been collected for this claim.";
   }
 
-  return "No grounded evidence has been attached yet.";
+  return "No evidence has been attached yet.";
 }
 
 export default function GroundedEvidencePanel({
@@ -84,12 +106,14 @@ export default function GroundedEvidencePanel({
   groundingConfidence,
   contradictionCount,
   supportCount,
+  evidenceAssessment,
   verificationScore,
   maxSources,
   compact = false,
 }: GroundedEvidencePanelProps) {
   const hasEvidence =
     Boolean(groundingSummary?.trim()) ||
+    Boolean(evidenceAssessment?.explanation?.trim()) ||
     groundingSources.length > 0 ||
     groundingStatus === "insufficient_evidence";
 
@@ -104,8 +128,17 @@ export default function GroundedEvidencePanel({
   const summary = getEvidenceSummary(
     groundingStatus,
     groundingSummary,
-    groundingSources.length
+    groundingSources.length,
+    evidenceAssessment?.explanation
   );
+
+  // Independent (deduplicated) counts from the evidence assessment are more
+  // precise than the cruder raw supportCount/contradictionCount - prefer
+  // them when present, falling back for legacy posts that predate this field.
+  const displaySupportCount =
+    evidenceAssessment?.independentSupportingCount ?? supportCount;
+  const displayContradictionCount =
+    evidenceAssessment?.independentContradictingCount ?? contradictionCount;
 
   const uniqueDomainCount = new Set(
     groundingSources
@@ -122,7 +155,7 @@ export default function GroundedEvidencePanel({
     <div className="vv-post-panel mb-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-veriverse-dark/60">
-          Grounded Evidence
+          Evidence
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {verificationScore != null && (
@@ -145,13 +178,13 @@ export default function GroundedEvidencePanel({
           </span>
         ) : null}
         <span className="vv-verdict-pill vv-verdict-neutral">
-          Confidence: {Number(groundingConfidence || 0)}
+          Confidence: {Math.round(Number(groundingConfidence || 0))}%
         </span>
         <span className="vv-verdict-pill vv-verdict-positive">
-          Supports: {Number(supportCount || 0)}
+          Supports: {Number(displaySupportCount || 0)}
         </span>
         <span className="vv-verdict-pill vv-verdict-negative">
-          Contradictions: {Number(contradictionCount || 0)}
+          Contradictions: {Number(displayContradictionCount || 0)}
         </span>
       </div>
 
@@ -197,7 +230,7 @@ export default function GroundedEvidencePanel({
         </div>
       ) : (
         <p className="text-xs text-veriverse-dark/50">
-          No source links are attached to this grounding result yet.
+          No source links are attached yet.
         </p>
       )}
 
