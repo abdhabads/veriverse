@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { logEvent } from "@/lib/logger";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -21,6 +21,34 @@ type Relation = {
     _id: string;
   };
 };
+
+// Client-side-only presentation phases for the publish flow. There is no
+// backend streaming/status endpoint - "checking" is an honest description of
+// what VeriVerse may be doing during a longer request, shown purely on a
+// client timer, never a confirmed backend event.
+type PublishPhase = "idle" | "publishing" | "checking" | "success";
+
+// Chosen so a typical fast response (well under a second, sub-~1s) never
+// shows "checking" at all, while a genuinely slower request (AI screening +
+// grounding) gives the user informative feedback well before it would start
+// to feel frozen.
+const CHECKING_DELAY_MS = 1500;
+// Long enough to register as a real confirmation, short enough not to block
+// the next action.
+const SUCCESS_DISPLAY_MS = 1200;
+
+function getPublishStatusText(phase: PublishPhase): string | null {
+  switch (phase) {
+    case "publishing":
+      return "Publishing…";
+    case "checking":
+      return "Checking claim against available evidence…";
+    case "success":
+      return "Published ✓";
+    default:
+      return null;
+  }
+}
 
 export default function FeedPage() {
   const router = useRouter();
@@ -63,6 +91,14 @@ export default function FeedPage() {
   const [sortOrder, setSortOrder] = useState("recent");
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [publishPhase, setPublishPhase] = useState<PublishPhase>("idle");
+  const publishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (publishTimerRef.current) clearTimeout(publishTimerRef.current);
+    };
+  }, []);
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
 
@@ -142,6 +178,13 @@ export default function FeedPage() {
     }
 
     setCreatingPost(true);
+    setPublishPhase("publishing");
+    // Client-side-only timer: swaps the status copy after a short interval
+    // if the request is still in flight. Never starts another request,
+    // never polls, never assumes grounding occurred - purely presentational.
+    publishTimerRef.current = setTimeout(() => {
+      setPublishPhase("checking");
+    }, CHECKING_DELAY_MS);
 
     await runMutation({
       action: () =>
@@ -149,13 +192,30 @@ export default function FeedPage() {
           content,
         }),
       onSuccess: async (res) => {
+        if (publishTimerRef.current) {
+          clearTimeout(publishTimerRef.current);
+          publishTimerRef.current = null;
+        }
+        setPublishPhase("success");
+
         const createdPost = res.data.post as Post;
         prependPost(createdPost);
         await fetchPosts();
         setNewPostContent("");
         showSuccess("Post published successfully.");
+
+        publishTimerRef.current = setTimeout(() => {
+          setPublishPhase("idle");
+        }, SUCCESS_DISPLAY_MS);
       },
-      onError: showError,
+      onError: (message) => {
+        if (publishTimerRef.current) {
+          clearTimeout(publishTimerRef.current);
+          publishTimerRef.current = null;
+        }
+        setPublishPhase("idle");
+        showError(message);
+      },
       onFinally: () => setCreatingPost(false),
     });
   }
@@ -736,18 +796,35 @@ export default function FeedPage() {
               />
 
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-xs text-slate-500 max-w-xl">
-                  Use hashtags like #truth #health #politics
-                </p>
+                {publishPhase === "idle" ? (
+                  <p className="text-xs text-slate-500 max-w-xl">
+                    Use hashtags like #truth #health #politics
+                  </p>
+                ) : (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-center gap-2 text-xs text-slate-500 max-w-xl"
+                  >
+                    {publishPhase !== "success" && (
+                      <span
+                        aria-hidden="true"
+                        className="inline-block h-3 w-3 shrink-0 rounded-full border-2 border-slate-300 border-t-veriverse-purple animate-spin"
+                      />
+                    )}
+                    {getPublishStatusText(publishPhase)}
+                  </p>
+                )}
 
                 <button
+                  data-testid="publish-button"
                   onClick={createPost}
-                  disabled={posting}
-                  aria-busy={posting}
-                  aria-disabled={posting}
+                  disabled={posting || publishPhase !== "idle"}
+                  aria-busy={posting || publishPhase !== "idle"}
+                  aria-disabled={posting || publishPhase !== "idle"}
                   className="vv-btn-primary"
                 >
-                  {posting ? "Posting..." : "Publish Post"}
+                  {publishPhase === "idle" ? "Publish Post" : "Posting..."}
                 </button>
               </div>
             </div>
