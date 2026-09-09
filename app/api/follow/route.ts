@@ -6,6 +6,34 @@ import { getUserFromRequest } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
 
+export async function GET(req: Request) {
+  try {
+    await connectDB();
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    }
+
+    const targetUserId = new URL(req.url).searchParams.get("targetUserId");
+    if (!targetUserId) {
+      return NextResponse.json({ success: false, message: "Target user required" }, { status: 400 });
+    }
+
+    if (String(user._id) === targetUserId) {
+      return NextResponse.json({ success: true, following: false });
+    }
+
+    const existing = await Follow.exists({
+      follower: user._id,
+      following: targetUserId,
+    });
+
+    return NextResponse.json({ success: true, following: Boolean(existing) });
+  } catch {
+    return NextResponse.json({ success: false, message: "Failed to fetch follow state" }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     await connectDB();

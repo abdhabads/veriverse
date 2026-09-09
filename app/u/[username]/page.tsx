@@ -5,6 +5,7 @@ import axios from "axios";
 import PageWrapper from "@/components/PageWrapper";
 import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 import { getAiLabelTone, getDisplayedAiLabel } from "@/lib/trustPresentation";
+import { api, getErrorMessage } from "@/lib/apiClient";
 
 type User = {
   _id: string;
@@ -42,10 +43,26 @@ export default function PublicProfilePage({
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [message, setMessage] = useState("");
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUserChecked, setCurrentUserChecked] = useState(false);
+  const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
 
   useEffect(() => {
     fetchProfile();
+    fetchCurrentUser();
   }, []);
+
+  useEffect(() => {
+    if (!user || !currentUser) return;
+    if (String(currentUser._id) === String(user._id)) return;
+
+    api
+      .get("/follow", { params: { targetUserId: user._id } })
+      .then((res) => setIsFollowing(Boolean(res.data.following)))
+      .catch(() => setIsFollowing(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, currentUser]);
 
   const fetchProfile = async () => {
     try {
@@ -58,30 +75,72 @@ export default function PublicProfilePage({
     }
   };
 
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await api.get("/me");
+      setCurrentUser(res.data.user);
+    } catch {
+      // Not logged in - this page remains viewable by anonymous visitors.
+      setCurrentUser(null);
+    } finally {
+      setCurrentUserChecked(true);
+    }
+  };
+
+  const toggleFollow = async () => {
+    if (!user || followBusy) return;
+    setFollowBusy(true);
+    try {
+      const res = await api.post("/follow", { targetUserId: user._id });
+      setIsFollowing(Boolean(res.data.following));
+    } catch (error: any) {
+      setMessage(getErrorMessage(error, "Failed to update follow status"));
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
   return (
     <PageWrapper title="Public Profile" subtitle="See a contributor's reputation, badges, and published claims.">
       {message && <div className="vv-banner mb-4">{message}</div>}
 
       {user && (
         <div className="vv-card p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-5 mb-4">
-            {user.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt={user.username}
-                className="w-16 h-16 rounded-full object-cover border border-veriverse-border"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-veriverse-slate border border-veriverse-border flex items-center justify-center text-sm text-veriverse-dark/60">
-                {user.username.slice(0, 1).toUpperCase()}
-              </div>
-            )}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+              {user.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.username}
+                  className="w-16 h-16 rounded-full object-cover border border-veriverse-border"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-veriverse-slate border border-veriverse-border flex items-center justify-center text-sm text-veriverse-dark/60">
+                  {user.username.slice(0, 1).toUpperCase()}
+                </div>
+              )}
 
-            <div>
-              <h3 className="text-2xl font-semibold">{user.username}</h3>
-              <p className="vv-subtitle">Reputation: {user.reputation}</p>
-              <p className="vv-subtitle">Reward Points: {user.rewardPoints}</p>
+              <div>
+                <h3 className="text-2xl font-semibold">{user.username}</h3>
+                <p className="vv-subtitle">Reputation: {user.reputation}</p>
+                <p className="vv-subtitle">Reward Points: {user.rewardPoints}</p>
+              </div>
             </div>
+
+            {currentUserChecked &&
+              currentUser &&
+              String(currentUser._id) !== String(user._id) &&
+              isFollowing !== null && (
+                <button
+                  type="button"
+                  data-testid="follow-toggle"
+                  onClick={toggleFollow}
+                  disabled={followBusy}
+                  className={isFollowing ? "vv-btn-secondary" : "vv-btn-primary"}
+                >
+                  {isFollowing ? "Following" : "Follow"}
+                </button>
+              )}
           </div>
 
           <div className="vv-post-panel mb-4">
