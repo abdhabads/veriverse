@@ -222,7 +222,7 @@ export default function PostCard({
   onNavigateToProfile,
 }: PostCardProps) {
   return (
-    <div data-testid="post-card" className="vv-card p-5 sm:p-6">
+    <div data-testid="post-card" className="vv-card p-3 sm:p-4">
       <div className="vv-post-panel p-5 sm:p-6">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -294,7 +294,7 @@ export default function PostCard({
           onClick={() => onToggleEvidence(post._id)}
           aria-expanded={isEvidenceExpanded}
           aria-controls={`evidence-panel-${post._id}`}
-          className="mt-4 w-full rounded-[24px] border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white"
+          className="mt-4 w-full rounded-[24px] border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
         >
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-medium text-veriverse-dark">
@@ -319,7 +319,6 @@ export default function PostCard({
               contradictionCount={post.contradictionCount}
               supportCount={post.supportCount}
               evidenceAssessment={post.evidenceAssessment}
-              verificationScore={post.verificationScore}
               maxSources={3}
               compact
             />
@@ -344,7 +343,7 @@ export default function PostCard({
                 disabled={post.finalized}
                 aria-label={`Endorse post by ${post.author?.username}`}
                 aria-disabled={post.finalized}
-                className="vv-post-action-button vv-post-action-strong"
+                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-strong"
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name="thumbsUp" />
@@ -357,7 +356,7 @@ export default function PostCard({
                 disabled={post.finalized}
                 aria-label={`Oppose post by ${post.author?.username}`}
                 aria-disabled={post.finalized}
-                className="vv-post-action-button vv-post-action-warn"
+                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-warn"
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name="thumbsDown" />
@@ -367,7 +366,7 @@ export default function PostCard({
               </button>
               <button
                 onClick={() => onRepost(post._id)}
-                className="vv-post-action-button"
+                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name="repost" />
@@ -377,7 +376,7 @@ export default function PostCard({
               </button>
               <button
                 onClick={() => onSave(post._id)}
-                className="vv-post-action-button"
+                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name={isSaved ? "bookmarkFilled" : "bookmark"} />
@@ -398,7 +397,7 @@ export default function PostCard({
                 <div className="vv-post-action-grid xl:grid-cols-2">
                   <button
                     onClick={() => onStartEdit(post._id, post.content)}
-                    className="vv-post-action-button"
+                    className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
                   >
                     <span className="flex items-center gap-1.5">
                       <ActionIcon name="pencil" />
@@ -412,7 +411,7 @@ export default function PostCard({
                       );
                       if (confirmed) onDelete(post._id);
                     }}
-                    className="vv-post-action-button vv-post-action-warn"
+                    className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-warn"
                   >
                     <span className="flex items-center gap-1.5">
                       <ActionIcon name="trash" />
@@ -427,7 +426,7 @@ export default function PostCard({
                   <div className="vv-post-action-grid xl:grid-cols-2">
                     <button
                       onClick={() => onFollow(post.author._id)}
-                      className="vv-post-action-button"
+                      className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
                     >
                       <span className="flex items-center gap-1.5">
                         <ActionIcon name={isFollowing ? "userCheck" : "userPlus"} />
@@ -436,7 +435,7 @@ export default function PostCard({
                     </button>
                     <button
                       onClick={() => onToggleRelation(post.author._id, "mute")}
-                      className="vv-post-action-button"
+                      className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
                     >
                       <span className="flex items-center gap-1.5">
                         <ActionIcon name={isMuted ? "unmute" : "mute"} />
@@ -452,7 +451,7 @@ export default function PostCard({
                             );
                         if (confirmed) onToggleRelation(post.author._id, "block");
                       }}
-                      className="vv-post-action-button vv-post-action-warn"
+                      className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-warn"
                     >
                       <span className="flex items-center gap-1.5">
                         <ActionIcon name="shieldOff" />
@@ -461,7 +460,7 @@ export default function PostCard({
                     </button>
                     <button
                       onClick={() => onReport(post._id)}
-                      className="vv-post-action-button vv-post-action-warn"
+                      className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-warn"
                     >
                       <span className="flex items-center gap-1.5">
                         <ActionIcon name="flag" />
@@ -492,7 +491,7 @@ export default function PostCard({
             the inline panel below. Both read the same count label. */}
         <Link
           href={`/posts/${post._id}`}
-          className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-veriverse-dark sm:hidden"
+          className="inline-flex items-center gap-1.5 rounded-lg text-sm text-slate-600 hover:text-veriverse-dark focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] sm:hidden"
         >
           <span aria-hidden="true">💬</span>
           {formatCommentCountLabel(comments)}
@@ -503,7 +502,7 @@ export default function PostCard({
           onClick={() => onToggleComments(post._id)}
           aria-expanded={isCommentsExpanded}
           aria-controls={`comments-panel-${post._id}`}
-          className="hidden items-center gap-1.5 text-sm text-slate-600 transition hover:text-veriverse-dark sm:inline-flex"
+          className="hidden items-center gap-1.5 rounded-lg text-sm text-slate-600 transition hover:text-veriverse-dark focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] sm:inline-flex"
         >
           <span aria-hidden="true">💬</span>
           {formatCommentCountLabel(comments)}

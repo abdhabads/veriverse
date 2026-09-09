@@ -1,4 +1,3 @@
-import VerificationBadge from "@/components/VerificationBadge";
 import TrustIcon, { type TrustIconName } from "@/components/TrustIcons";
 import type { TrustTone } from "@/lib/trustPresentation";
 import { truncateAtSentence } from "@/lib/textUtils";
@@ -33,6 +32,13 @@ type GroundedEvidencePanelProps = {
   // comment). Falls back cleanly to the older fields when absent, so legacy
   // posts created before this field existed still render correctly.
   evidenceAssessment?: EvidenceAssessment;
+  // Accepted for backward compatibility with existing callers (e.g. the post
+  // detail page) - no longer rendered here. The panel's own verdict-adjacent
+  // badge was a second, independently-drifted verdict engine (see
+  // VerificationBadge's own getBadgeConfig) duplicating - and sometimes
+  // disagreeing with - the single-source-of-truth verdict already shown via
+  // TrustSummaryLine above this panel. Removed rather than reconciled here,
+  // since fixing VerificationBadge itself is out of this slice's boundary.
   verificationScore?: number | null;
   maxSources?: number;
   compact?: boolean;
@@ -107,7 +113,6 @@ export default function GroundedEvidencePanel({
   contradictionCount,
   supportCount,
   evidenceAssessment,
-  verificationScore,
   maxSources,
   compact = false,
 }: GroundedEvidencePanelProps) {
@@ -157,16 +162,11 @@ export default function GroundedEvidencePanel({
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-veriverse-dark/60">
           Evidence
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {verificationScore != null && (
-            <VerificationBadge score={verificationScore} showScore={true} />
-          )}
-          {groundingStatus === "insufficient_evidence" ? (
-            <span className="vv-verdict-pill vv-verdict-review text-[10px] uppercase tracking-[0.16em]">
-              Insufficient Evidence
-            </span>
-          ) : null}
-        </div>
+        {groundingStatus === "insufficient_evidence" ? (
+          <span className="vv-verdict-pill vv-verdict-review text-[10px] uppercase tracking-[0.16em]">
+            Insufficient Evidence
+          </span>
+        ) : null}
       </div>
 
       <p className="mb-3 text-sm leading-6 text-veriverse-dark/80">{summary}</p>
@@ -178,7 +178,7 @@ export default function GroundedEvidencePanel({
           </span>
         ) : null}
         <span className="vv-verdict-pill vv-verdict-neutral">
-          Confidence: {Math.round(Number(groundingConfidence || 0))}%
+          Evidence confidence: {Math.round(Number(groundingConfidence || 0))}%
         </span>
         <span className="vv-verdict-pill vv-verdict-positive">
           Supports: {Number(displaySupportCount || 0)}

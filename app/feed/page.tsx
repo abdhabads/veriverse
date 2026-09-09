@@ -72,15 +72,12 @@ export default function FeedPage() {
   const [creatingPost, setCreatingPost] = useState(false);
   const [newPostContent, setNewPostContent] = useState("");
   const [pendingPostActions, setPendingPostActions] = useState<Record<string, string>>({});
-  const [pendingCommentActions, setPendingCommentActions] = useState<Record<string, boolean>>({});
 
   // Backward-compatible aliases while existing UI handlers are migrated.
   const pageLoading = loading;
-  const setPageLoading = setLoading;
   const content = newPostContent;
   const setContent = setNewPostContent;
   const posting = creatingPost;
-  const setPosting = setCreatingPost;
   const reportReasonMap = reportReasons;
   const setReportReasonMap = setReportReasons;
 
@@ -259,8 +256,6 @@ export default function FeedPage() {
       return;
     }
 
-    setPendingCommentActions((prev) => ({ ...prev, [postId]: true }));
-
     await runMutation({
       action: () =>
         api.post(`/posts/${postId}/comments`, {
@@ -282,8 +277,6 @@ export default function FeedPage() {
         showSuccess("Comment added.");
       },
       onError: showError,
-      onFinally: () =>
-        setPendingCommentActions((prev) => ({ ...prev, [postId]: false })),
     });
   };
 
@@ -423,11 +416,6 @@ export default function FeedPage() {
       next[postId] = action;
       return next;
     });
-  }
-
-  function isPostPending(postId: string, action?: string) {
-    if (!action) return Boolean(pendingPostActions[postId]);
-    return pendingPostActions[postId] === action;
   }
 
   function hasRelation(userId: string, relationType: "block" | "mute") {

@@ -94,7 +94,16 @@ test("evidence disclosure is collapsed by default and toggles aria-expanded", as
   // Independent counts are shown, not raw supportCount/contradictionCount
   // duplicated a second time, and no raw risk/verification line is present.
   await expect(card.getByText(/Supports:\s*1/)).toBeVisible();
-  await expect(card.getByText(/Confidence:\s*70%/)).toBeVisible();
+  await expect(card.getByText(/Evidence confidence:\s*70%/)).toBeVisible();
+
+  // The evidence panel no longer repeats a second, independently-computed
+  // verdict badge (VerificationBadge) alongside its own confidence pill -
+  // the verdict is shown exactly once, via the compact TrustSummaryLine
+  // above the panel, not duplicated inside it.
+  const evidencePanel = card.locator('[id^="evidence-panel-"]');
+  await expect(evidencePanel.getByText(/^Supported$/)).toHaveCount(0);
+  await expect(evidencePanel.getByText(/^Well Supported$/)).toHaveCount(0);
+  await expect(evidencePanel.getByText(/^Strong Evidence$/)).toHaveCount(0);
   await expect(card).not.toContainText("Risk");
   await expect(card).not.toContainText("verification confidence");
 
