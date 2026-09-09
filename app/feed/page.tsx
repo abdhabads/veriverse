@@ -50,6 +50,8 @@ function getPublishStatusText(phase: PublishPhase): string | null {
   }
 }
 
+type FeedMode = "discovery" | "following";
+
 export default function FeedPage() {
   const router = useRouter();
   const {
@@ -99,25 +101,61 @@ export default function FeedPage() {
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
 
+  // Deliberately the same on server and client on first render (avoids a
+  // hydration mismatch) - the mount effect below corrects it from the real
+  // URL before loadFeedPage ever reads it, via next/navigation's
+  // useSearchParams would force a Suspense boundary/CSR bailout on this
+  // page that isn't otherwise needed, since everything else here is
+  // already fetched client-side after mount.
+  const [feedMode, setFeedMode] = useState<FeedMode>("discovery");
+  // Guards against a slower, earlier fetch (e.g. from rapid mode switching,
+  // or the initial mount's auth check being slower than a switch the user
+  // triggers while it's still in flight) overwriting the result of a later
+  // one - only the most recently issued feed request is allowed to commit
+  // its result to state.
+  const feedRequestSeqRef = useRef(0);
+  // loadFeedPage is only ever invoked once, from a mount-only effect, so its
+  // own closure over feedMode would otherwise go stale the moment the user
+  // switches modes before that single call finishes its (slower) auth
+  // check. Set synchronously (see below) before loadFeedPage starts, so it
+  // always reads the URL-derived mode rather than a stale one.
+  const feedModeRef = useRef<FeedMode>("discovery");
+
+  function postsRequestParams(mode: FeedMode) {
+    return mode === "following" ? { params: { feed: "following" } } : undefined;
+  }
+
   useEffect(() => {
+    const urlMode: FeedMode =
+      new URLSearchParams(window.location.search).get("mode") === "following"
+        ? "following"
+        : "discovery";
+    feedModeRef.current = urlMode;
+    if (urlMode !== "discovery") setFeedMode(urlMode);
     void loadFeedPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadFeedPage() {
+    // Claimed immediately (before the auth-check round trip) so a mode
+    // switch that happens while this is still in flight is correctly
+    // treated as newer, regardless of which request resolves first.
+    const seq = ++feedRequestSeqRef.current;
     try {
       setLoading(true);
       clearMessage();
 
       const user = await requireAuthenticated(router);
       if (!user) return;
+      if (feedRequestSeqRef.current !== seq) return;
 
       setCurrentUser(user);
 
       const [postsRes, relationsRes] = await Promise.all([
-        api.get("/posts"),
+        api.get("/posts", postsRequestParams(feedModeRef.current)),
         api.get("/relations/list"),
       ]);
+      if (feedRequestSeqRef.current !== seq) return;
 
       const fetchedPosts = postsRes.data.posts || [];
       const fetchedRelations = relationsRes.data.relations || [];
@@ -145,14 +183,31 @@ export default function FeedPage() {
     }
   };
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (mode: FeedMode = feedMode) => {
+    const seq = ++feedRequestSeqRef.current;
     try {
-      const res = await api.get("/posts");
+      const res = await api.get("/posts", postsRequestParams(mode));
+      if (feedRequestSeqRef.current !== seq) return;
       const fetchedPosts = res.data.posts || [];
       setPosts(fetchedPosts);
     } catch {
+      if (feedRequestSeqRef.current !== seq) return;
       showError("Failed to load posts");
     }
+  };
+
+  const switchFeedMode = (mode: FeedMode) => {
+    if (mode === feedMode) return;
+    setFeedMode(mode);
+    feedModeRef.current = mode;
+    // Clear immediately so the previous mode's posts never appear to belong
+    // to the newly selected mode while the new fetch is in flight.
+    setPosts([]);
+    router.replace(mode === "following" ? "/feed?mode=following" : "/feed", {
+      scroll: false,
+    });
+    setLoading(true);
+    fetchPosts(mode).finally(() => setLoading(false));
   };
 
   async function fetchComments(postId: string) {
@@ -816,26 +871,76 @@ export default function FeedPage() {
               </div>
             </div>
 
+            <div
+              role="tablist"
+              aria-label="Feed mode"
+              className="flex gap-2 rounded-full border border-veriverse-border bg-white/60 p-1 w-fit"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={feedMode === "discovery"}
+                data-testid="feed-mode-discovery"
+                onClick={() => switchFeedMode("discovery")}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] ${
+                  feedMode === "discovery"
+                    ? "bg-veriverse-dark text-white"
+                    : "text-veriverse-dark/60 hover:text-veriverse-dark"
+                }`}
+              >
+                Discovery
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={feedMode === "following"}
+                data-testid="feed-mode-following"
+                onClick={() => switchFeedMode("following")}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] ${
+                  feedMode === "following"
+                    ? "bg-veriverse-dark text-white"
+                    : "text-veriverse-dark/60 hover:text-veriverse-dark"
+                }`}
+              >
+                Following
+              </button>
+            </div>
+
             {message && <Toast message={message} type={messageType} />}
 
-            {filteredPosts.length === 0 && !pageLoading && (
-              <EmptyState
-                title="No posts found"
-                description="No posts match your current search or filter."
-                action={
-                  <button
-                    onClick={() => {
-                      setSearchTerm("");
-                      setStatusFilter("all");
-                      setSortOrder("recent");
-                    }}
-                    className="vv-btn-secondary"
-                  >
-                    Clear Filters
-                  </button>
-                }
-              />
-            )}
+            {filteredPosts.length === 0 &&
+              !pageLoading &&
+              (feedMode === "following" ? (
+                <EmptyState
+                  title="Your Following feed is empty"
+                  description="Follow people to see their posts here."
+                  action={
+                    <button
+                      onClick={() => switchFeedMode("discovery")}
+                      className="vv-btn-secondary"
+                    >
+                      Back to Discovery
+                    </button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  title="No posts found"
+                  description="No posts match your current search or filter."
+                  action={
+                    <button
+                      onClick={() => {
+                        setSearchTerm("");
+                        setStatusFilter("all");
+                        setSortOrder("recent");
+                      }}
+                      className="vv-btn-secondary"
+                    >
+                      Clear Filters
+                    </button>
+                  }
+                />
+              ))}
 
             {pageLoading ? (
               <LoadingSpinner label="Loading posts..." />

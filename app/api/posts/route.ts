@@ -6,6 +6,7 @@ import { getUserIdFromRequest } from "@/lib/auth";
 import { evaluateContentTruthPipeline } from "@/lib/aiTruthPipeline";
 import { extractHashtags } from "@/lib/hashtags";
 import UserRelation from "@/models/UserRelation";
+import Follow from "@/models/Follow";
 import { requiresExpertReview } from "@/lib/expertReview";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
@@ -173,6 +174,11 @@ export async function GET(req: Request) {
   try {
     await connectDB();
     const requesterId = getUserIdFromRequest(req);
+    const isFollowingFeed = new URL(req.url).searchParams.get("feed") === "following";
+
+    if (isFollowingFeed && !requesterId) {
+      return fail("Unauthorized", 401);
+    }
 
     let excludedAuthorIds: string[] = [];
 
@@ -185,11 +191,24 @@ export async function GET(req: Request) {
       excludedAuthorIds = relations.map((item: any) => String(item.targetUser));
     }
 
-    const posts = await Post.find(
-      excludedAuthorIds.length > 0
-        ? { author: { $nin: excludedAuthorIds } }
-        : {}
-    )
+    const filter: Record<string, unknown> = {};
+
+    if (isFollowingFeed) {
+      const follows = await Follow.find({ follower: requesterId }).select("following");
+      const allowedAuthorIds = [
+        ...follows.map((item: any) => String(item.following)),
+        String(requesterId),
+      ];
+
+      filter.author =
+        excludedAuthorIds.length > 0
+          ? { $in: allowedAuthorIds, $nin: excludedAuthorIds }
+          : { $in: allowedAuthorIds };
+    } else if (excludedAuthorIds.length > 0) {
+      filter.author = { $nin: excludedAuthorIds };
+    }
+
+    const posts = await Post.find(filter)
       .populate("author", "username reputation avatarUrl badges")
       .sort({ createdAt: -1 })
       .limit(20);
@@ -219,7 +238,9 @@ export async function GET(req: Request) {
       };
     });
 
-    normalizedPosts.sort((a, b) => b.score - a.score);
+    if (!isFollowingFeed) {
+      normalizedPosts.sort((a, b) => b.score - a.score);
+    }
 
     const verifiedPosts = normalizedPosts.filter(
       (post) => post.status === "verified"

@@ -192,3 +192,115 @@ test("GET /api/follow requires auth and handles self-target safely", async ({ ba
 
   await apiA.dispose();
 });
+
+// P1.1: GET /api/posts?feed=following
+test("Following feed returns followed authors and the requester's own posts, not un-followed authors", async ({ baseURL }) => {
+  // "C": an author usera will never follow, seeded fresh here since the
+  // shared test fixtures only include usera/userb.
+  const apiC = await playwrightRequest.newContext({ baseURL });
+  await apiC.post("/api/login", { data: { email: "expert@test.com", password: "Password123!" } });
+  const cPostRes = await apiC.post("/api/posts", {
+    data: { content: "Post from an author usera does not follow." },
+  });
+  expect(cPostRes.ok()).toBeTruthy();
+  await apiC.dispose();
+
+  const apiA = await playwrightRequest.newContext({ baseURL });
+  await apiA.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+  const userbId = (await (await apiA.get("/api/users/userb")).json()).user._id;
+  await apiA.post("/api/follow", { data: { targetUserId: userbId } });
+
+  const followingRes = await apiA.get("/api/posts", { params: { feed: "following" } });
+  expect(followingRes.ok()).toBeTruthy();
+  const followingJson = await followingRes.json();
+  const contents: string[] = (followingJson.posts || []).map((p: any) => p.content);
+
+  // Followed author (userb) is present.
+  expect(contents).toContain("This miracle cure is 100% guaranteed!!!");
+  // Requester's own post is present without needing to follow themselves.
+  expect(contents).toContain("The local clinic opens at 8am tomorrow.");
+  // Un-followed author ("C") is absent.
+  expect(contents).not.toContain("Post from an author usera does not follow.");
+
+  await apiA.dispose();
+});
+
+test("Following feed excludes a followed-but-muted author", async ({ baseURL }) => {
+  const apiA = await playwrightRequest.newContext({ baseURL });
+  await apiA.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+  const userbId = (await (await apiA.get("/api/users/userb")).json()).user._id;
+
+  await apiA.post("/api/follow", { data: { targetUserId: userbId } });
+  await apiA.post("/api/relations", { data: { targetUserId: userbId, relationType: "mute" } });
+
+  const followingJson = await (
+    await apiA.get("/api/posts", { params: { feed: "following" } })
+  ).json();
+  const contents: string[] = (followingJson.posts || []).map((p: any) => p.content);
+  expect(contents).not.toContain("This miracle cure is 100% guaranteed!!!");
+
+  await apiA.dispose();
+});
+
+test("Following feed excludes a followed-but-blocked author", async ({ baseURL }) => {
+  const apiA = await playwrightRequest.newContext({ baseURL });
+  await apiA.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+  const userbId = (await (await apiA.get("/api/users/userb")).json()).user._id;
+
+  await apiA.post("/api/follow", { data: { targetUserId: userbId } });
+  await apiA.post("/api/relations", { data: { targetUserId: userbId, relationType: "block" } });
+
+  const followingJson = await (
+    await apiA.get("/api/posts", { params: { feed: "following" } })
+  ).json();
+  const contents: string[] = (followingJson.posts || []).map((p: any) => p.content);
+  expect(contents).not.toContain("This miracle cure is 100% guaranteed!!!");
+
+  await apiA.dispose();
+});
+
+test("Following feed requires authentication", async ({ baseURL }) => {
+  const apiUnauth = await playwrightRequest.newContext({ baseURL });
+  const res = await apiUnauth.get("/api/posts", { params: { feed: "following" } });
+  expect(res.status()).toBe(401);
+  await apiUnauth.dispose();
+});
+
+test("Following feed returns an empty array, not a Discovery fallback, when following nobody with no own posts", async ({ baseURL }) => {
+  const apiAdmin = await playwrightRequest.newContext({ baseURL });
+  await apiAdmin.post("/api/login", { data: { email: "admin@test.com", password: "Password123!" } });
+
+  const followingJson = await (
+    await apiAdmin.get("/api/posts", { params: { feed: "following" } })
+  ).json();
+  expect(followingJson.posts).toEqual([]);
+
+  await apiAdmin.dispose();
+});
+
+test("plain GET /api/posts (no feed param) retains Discovery behavior", async ({ baseURL }) => {
+  const apiA = await playwrightRequest.newContext({ baseURL });
+  await apiA.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+
+  // Discovery is global - it must still surface a post from an author usera
+  // does not follow, proving Following mode's author-scoping didn't leak in.
+  const discoveryJson = await (await apiA.get("/api/posts")).json();
+  const contents: string[] = (discoveryJson.posts || []).map((p: any) => p.content);
+  expect(contents).toContain("This miracle cure is 100% guaranteed!!!");
+
+  await apiA.dispose();
+});
+
+test("Following feed response retains private/no-store caching, same as Discovery", async ({ baseURL }) => {
+  const apiA = await playwrightRequest.newContext({ baseURL });
+  await apiA.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+
+  const res = await apiA.get("/api/posts", { params: { feed: "following" } });
+  const cacheControl = (res.headers()["cache-control"] || "").toLowerCase();
+  expect(cacheControl).toContain("private");
+  expect(cacheControl).toContain("no-store");
+  expect(cacheControl).not.toContain("s-maxage");
+  expect(cacheControl).not.toContain("stale-while-revalidate");
+
+  await apiA.dispose();
+});
