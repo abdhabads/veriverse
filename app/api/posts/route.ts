@@ -241,7 +241,7 @@ export async function GET(req: Request) {
         trending: trendingPosts,
       },
     });
-    res.headers.set("Cache-Control", "s-maxage=60, stale-while-revalidate");
+    res.headers.set("Cache-Control", "private, no-store");
     return res;
   } catch (error) {
     console.error("GET /api/posts error:", error);
