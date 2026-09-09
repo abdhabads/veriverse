@@ -140,6 +140,100 @@ test("late failure: checking is already visible, then fails, progress clears, ne
   await expect(publishButton).toBeEnabled();
 });
 
+test("regression: newly published post stays visible even if a refetch would omit it (P0.1)", async ({ page }) => {
+  // Models the production failure: GET /api/posts sits behind a shared cache
+  // that can briefly (or not-so-briefly) omit a just-created post. This test
+  // proves the fix by request behavior - the app must not depend on any GET
+  // after the POST at all, not merely happen to dodge a race in this run.
+  await login(page, "usera@test.com", "Password123!");
+
+  const SMOKE_CONTENT = "Regression publish visibility check: cache can go stale.";
+  let postRequestCount = 0;
+
+  // Just count POSTs for now - let every GET (including React Strict Mode's
+  // dev-only duplicate mount fetch) pass through untouched.
+  await page.route("**/api/posts", async (route) => {
+    if (route.request().method() === "POST") {
+      postRequestCount += 1;
+    }
+    await route.continue();
+  });
+
+  await page.goto("/feed");
+  // Let the mount's fetch(es) fully settle - including Strict Mode's
+  // duplicate-effect invocation in dev - before arming the post-publish
+  // trap below, so a late-resolving mount request can't be mis-attributed
+  // to publishing.
+  await page.waitForLoadState("networkidle");
+
+  const composer = page.getByPlaceholder(/share something truthful/i);
+  await composer.fill(SMOKE_CONTENT);
+
+  let getCountAfterArmed = 0;
+  // Registered just before the click: Playwright matches a request against
+  // the most recently registered matching handler at the time the request
+  // is *initiated*, so any residual mount request already in flight is
+  // unaffected - only requests the app initiates from this point on can be
+  // caught here.
+  await page.route("**/api/posts", async (route) => {
+    if (route.request().method() !== "GET") {
+      // Not ours to handle - fall back to the first handler above so the
+      // POST still gets counted there instead of being swallowed here.
+      await route.fallback();
+      return;
+    }
+    // 3. Any GET made after arming is deliberately mocked to omit the new
+    // post - simulating the stale shared-cache response that caused the
+    // production bug. If the app ever refetches after publishing, this
+    // would make the new post disappear again.
+    getCountAfterArmed += 1;
+    const response = await route.fetch();
+    const json = await response.json();
+    const filtered = {
+      ...json,
+      posts: (json.posts || []).filter(
+        (p: any) => !String(p.content || "").includes(SMOKE_CONTENT)
+      ),
+    };
+    await route.fulfill({
+      status: response.status(),
+      contentType: "application/json",
+      body: JSON.stringify(filtered),
+    });
+  });
+
+  const publishButton = page.getByTestId("publish-button");
+
+  // 4. Click Publish.
+  await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().includes("/api/posts") && res.request().method() === "POST" && res.ok()
+    ),
+    publishButton.click(),
+  ]);
+
+  const newPost = page
+    .locator('[data-testid="post-card"]')
+    .filter({ hasText: SMOKE_CONTENT })
+    .first();
+
+  // 5. The post returned by the POST becomes visible immediately.
+  await expect(newPost).toBeVisible();
+
+  // 6. It remains visible through the success phase and after returning to idle.
+  await expect(page.getByText("Use hashtags like #truth #health #politics")).toBeVisible({
+    timeout: 5000,
+  });
+  await expect(newPost).toBeVisible();
+
+  // 7. Exactly one POST occurred.
+  expect(postRequestCount).toBe(1);
+
+  // 8. Publishing itself never triggered another GET /api/posts - proven by
+  // request count, not merely by the post happening to still be visible.
+  expect(getCountAfterArmed).toBe(0);
+});
+
 test("duplicate-submit protection: button is disabled while a publish is pending", async ({ page }) => {
   await login(page, "usera@test.com", "Password123!");
   await page.goto("/feed");

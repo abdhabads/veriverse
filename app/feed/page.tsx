@@ -197,7 +197,6 @@ export default function FeedPage() {
 
         const createdPost = res.data.post as Post;
         prependPost(createdPost);
-        await fetchPosts();
         setNewPostContent("");
         showSuccess("Post published successfully.");
 
