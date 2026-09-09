@@ -38,6 +38,9 @@ test("user can comment on a post", async ({ page }) => {
   await login(page, "usera@test.com", "Password123!");
   await page.goto("/feed");
 
+  // Comments are collapsed by default (P0-C) - expand before interacting.
+  await page.getByRole("button", { name: /comments?|no comments yet/i }).first().click();
+
   const commentBox = page.getByPlaceholder(/add a comment/i).first();
   await commentBox.fill("Useful update.");
   await page.getByRole("button", { name: /send/i }).first().click();

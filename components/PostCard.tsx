@@ -128,6 +128,17 @@ function getFeedCategory(post: Post) {
   return post.status.replaceAll("_", " ");
 }
 
+// "Comments" (no number) when the list genuinely hasn't been fetched yet -
+// showing "0 comments" in that case would misrepresent unknown as zero.
+// Once fetched, an empty array is a real, confirmed zero.
+export function formatCommentCountLabel(comments?: Comment[]): string {
+  if (!comments) return "Comments";
+  const count = comments.length;
+  if (count === 0) return "No comments yet";
+  if (count === 1) return "1 comment";
+  return `${count} comments`;
+}
+
 type PostCardProps = {
   post: Post;
   currentUser: User | null;
@@ -163,7 +174,9 @@ type PostCardProps = {
   reportReason: string;
   onReportReasonChange: (postId: string, reason: string) => void;
 
-  // Comments.
+  // Comments (desktop: inline expand/collapse; mobile: routes to detail page).
+  isCommentsExpanded: boolean;
+  onToggleComments: (postId: string) => void;
   comments: Comment[] | undefined;
   commentInput: string;
   onCommentInputChange: (postId: string, value: string) => void;
@@ -199,6 +212,8 @@ export default function PostCard({
   onReport,
   reportReason,
   onReportReasonChange,
+  isCommentsExpanded,
+  onToggleComments,
   comments,
   commentInput,
   onCommentInputChange,
@@ -472,44 +487,68 @@ export default function PostCard({
       </div>
 
       <div className="vv-divider pt-4">
-        <h3 className="text-sm font-semibold text-veriverse-dark mb-3">Comments</h3>
+        {/* Mobile: routes to the detail page's full threaded-comment view
+            instead of expanding the feed comment UI inline. Desktop: toggles
+            the inline panel below. Both read the same count label. */}
+        <Link
+          href={`/posts/${post._id}`}
+          className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-veriverse-dark sm:hidden"
+        >
+          <span aria-hidden="true">💬</span>
+          {formatCommentCountLabel(comments)}
+        </Link>
 
-        <div className="vv-post-comment-shell">
-          <div className="flex flex-col sm:flex-row gap-2 mb-4">
-            <input
-              className="vv-input flex-1"
-              placeholder="Add a comment"
-              aria-label={`Add a comment to post by ${post.author?.username}`}
-              value={commentInput}
-              onChange={(e) => onCommentInputChange(post._id, e.target.value)}
-            />
-            <button onClick={() => onAddComment(post._id)} className="vv-btn-accent">
-              Send
-            </button>
-          </div>
+        <button
+          type="button"
+          onClick={() => onToggleComments(post._id)}
+          aria-expanded={isCommentsExpanded}
+          aria-controls={`comments-panel-${post._id}`}
+          className="hidden items-center gap-1.5 text-sm text-slate-600 transition hover:text-veriverse-dark sm:inline-flex"
+        >
+          <span aria-hidden="true">💬</span>
+          {formatCommentCountLabel(comments)}
+        </button>
 
-          <div className="space-y-3">
-            {!comments ? (
-              <button
-                onClick={() => onLoadComments(post._id)}
-                className="vv-btn-secondary"
-              >
-                Load Comments
-              </button>
-            ) : (
-              <div className="space-y-3">
-                {comments.map((comment) => (
-                  <div key={comment._id} className="vv-post-comment-thread">
-                    <p className="text-sm font-medium text-veriverse-dark mb-1">
-                      {comment.author?.username}
-                    </p>
-                    <p className="text-sm text-slate-700 leading-6">{comment.content}</p>
-                  </div>
-                ))}
+        {isCommentsExpanded && (
+          <div id={`comments-panel-${post._id}`} className="mt-3 hidden sm:block">
+            <div className="vv-post-comment-shell">
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <input
+                  className="vv-input flex-1"
+                  placeholder="Add a comment"
+                  aria-label={`Add a comment to post by ${post.author?.username}`}
+                  value={commentInput}
+                  onChange={(e) => onCommentInputChange(post._id, e.target.value)}
+                />
+                <button onClick={() => onAddComment(post._id)} className="vv-btn-accent">
+                  Send
+                </button>
               </div>
-            )}
+
+              <div className="space-y-3">
+                {!comments ? (
+                  <button
+                    onClick={() => onLoadComments(post._id)}
+                    className="vv-btn-secondary"
+                  >
+                    Load Comments
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    {comments.map((comment) => (
+                      <div key={comment._id} className="vv-post-comment-thread">
+                        <p className="text-sm font-medium text-veriverse-dark mb-1">
+                          {comment.author?.username}
+                        </p>
+                        <p className="text-sm text-slate-700 leading-6">{comment.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="mt-4 flex items-center justify-between text-xs text-slate-500">

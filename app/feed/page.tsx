@@ -62,6 +62,7 @@ export default function FeedPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("recent");
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
 
@@ -812,6 +813,13 @@ export default function FeedPage() {
                   reportReason={reportReasonMap[post._id] || "other"}
                   onReportReasonChange={(postId, reason) =>
                     setReportReasonMap((prev) => ({ ...prev, [postId]: reason }))
+                  }
+                  isCommentsExpanded={Boolean(expandedComments[post._id])}
+                  onToggleComments={(postId) =>
+                    setExpandedComments((prev) => ({
+                      ...prev,
+                      [postId]: !prev[postId],
+                    }))
                   }
                   comments={commentsMap[post._id]}
                   commentInput={commentInputs[post._id] || ""}
