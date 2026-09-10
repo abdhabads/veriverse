@@ -4,7 +4,7 @@ import Conversation from "@/models/Conversation";
 import Message from "@/models/Message";
 import User from "@/models/User";
 import Notification from "@/models/Notification";
-import { getUserFromRequest } from "@/lib/auth";
+import { getUserFromRequest, requireActiveUser } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
 import { cleanString, isValidObjectId } from "@/lib/validation";
@@ -122,14 +122,9 @@ export async function GET(req: Request, context: RouteContext) {
 export async function POST(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
-
-    if (!user) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "messages-send", String(user._id)),

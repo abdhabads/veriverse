@@ -4,7 +4,7 @@ import Comment from "@/models/Comment";
 import Post from "@/models/Post";
 import User from "@/models/User";
 import Notification from "@/models/Notification";
-import { getUserIdFromRequest } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/auth";
 import { extractMentions } from "@/lib/mentions";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
@@ -37,14 +37,10 @@ export async function GET(req: Request, context: RouteContext) {
 export async function POST(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const userId = getUserIdFromRequest(req);
-
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
+    const userId = String(user._id);
 
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "comment", userId),
@@ -69,14 +65,6 @@ export async function POST(req: Request, context: RouteContext) {
     if (!post) {
       return NextResponse.json(
         { success: false, message: "Post not found" },
-        { status: 404 }
-      );
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, message: "User not found" },
         { status: 404 }
       );
     }

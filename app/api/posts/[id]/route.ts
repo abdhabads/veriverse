@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Post from "@/models/Post";
-import { getUserFromRequest } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/auth";
 import { evaluateContentTruthPipeline } from "@/lib/aiTruthPipeline";
 import { extractHashtags } from "@/lib/hashtags";
 import { requiresExpertReview } from "@/lib/expertReview";
@@ -23,8 +23,9 @@ type RouteContext = {
 export async function PATCH(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
-    if (!user) return fail("Unauthorized", 401);
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
     const userId = String(user._id);
     const limitResponse = enforceRateLimit({
@@ -168,8 +169,9 @@ export async function PATCH(req: Request, context: RouteContext) {
 export async function DELETE(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
-    if (!user) return fail("Unauthorized", 401);
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
     const { id } = await context.params;
     if (!isValidObjectId(id)) return fail("Invalid post ID", 400);

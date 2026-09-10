@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Comment from "@/models/Comment";
-import { getUserFromRequest } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/auth";
 import { extractMentions } from "@/lib/mentions";
 import { cleanString, isValidObjectId } from "@/lib/validation";
 import { ok, fail } from "@/lib/apiResponse";
@@ -15,8 +15,9 @@ type RouteContext = {
 export async function PATCH(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
-    if (!user) return fail("Unauthorized", 401);
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "edit_comment", String(user._id)),
@@ -60,8 +61,9 @@ export async function PATCH(req: Request, context: RouteContext) {
 export async function DELETE(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
-    if (!user) return fail("Unauthorized", 401);
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
     const { id } = await context.params;
     if (!isValidObjectId(id)) return fail("Invalid comment ID", 400);

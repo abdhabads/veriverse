@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Post from "@/models/Post";
-import User from "@/models/User";
-import { getUserIdFromRequest } from "@/lib/auth";
+import { getUserIdFromRequest, requireActiveUser } from "@/lib/auth";
 import { evaluateContentTruthPipeline } from "@/lib/aiTruthPipeline";
 import { extractHashtags } from "@/lib/hashtags";
 import UserRelation from "@/models/UserRelation";
@@ -19,11 +18,10 @@ import { tryActivateReferral } from "@/lib/referrals";
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const userId = getUserIdFromRequest(req);
-
-    if (!userId) {
-      return fail("Unauthorized", 401);
-    }
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
+    const userId = String(user._id);
 
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "create_post", userId),
@@ -39,11 +37,6 @@ export async function POST(req: Request) {
 
     if (!cleanedContent) {
       return fail("Content is required and must be under 1000 characters.", 400);
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return fail("User not found", 404);
     }
 
     const hashtags = extractHashtags(cleanedContent);

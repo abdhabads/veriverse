@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
-import { getUserFromRequest } from "@/lib/auth";
+import { getUserFromRequest, requireActiveUser } from "@/lib/auth";
 import User from "@/models/User";
 import Post from "@/models/Post";
 import Comment from "@/models/Comment";
@@ -65,11 +65,9 @@ async function validateUserPassword(
 export async function PATCH(req: Request) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
-
-    if (!user) {
-      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "account_action", String(user._id)),
@@ -85,10 +83,6 @@ export async function PATCH(req: Request) {
 
     if (action !== "deactivate") {
       return NextResponse.json({ success: false, message: "Invalid account action." }, { status: 400 });
-    }
-
-    if (user.isDeactivated) {
-      return NextResponse.json({ success: false, message: "This account is already deactivated." }, { status: 409 });
     }
 
     const passwordCheck = await validateUserPassword(user, password);

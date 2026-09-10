@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Notification from "@/models/Notification";
-import { getUserFromRequest } from "@/lib/auth";
+import { getUserFromRequest, requireActiveUser } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
@@ -40,14 +40,9 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
-
-    if (!user) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
     await Notification.updateMany(
       { user: user._id, isRead: false },

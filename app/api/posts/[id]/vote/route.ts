@@ -6,7 +6,7 @@ import Vote from "@/models/Vote";
 import User from "@/models/User";
 import RewardLog from "@/models/RewardLog";
 import ReputationLog from "@/models/ReputationLog";
-import { getUserIdFromRequest } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/auth";
 import { calculateBadges } from "@/lib/badges";
 import { getVotingWeight } from "@/lib/votingWeight";
 import { canUserVote, getTodayKey } from "@/lib/antiAbuse";
@@ -26,13 +26,10 @@ type RouteContext = {
 export async function POST(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const userId = getUserIdFromRequest(req);
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const voter = guard.user;
+    const userId = String(voter._id);
 
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "vote", userId),
@@ -41,14 +38,6 @@ export async function POST(req: Request, context: RouteContext) {
       message: "Too many vote requests. Please slow down.",
     });
     if (limitResponse) return limitResponse;
-
-    const voter = await User.findById(userId);
-    if (!voter) {
-      return NextResponse.json(
-        { success: false, message: "User not found" },
-        { status: 404 }
-      );
-    }
 
     const abuseCheck = canUserVote({
       accountCreatedAt: voter.createdAt,

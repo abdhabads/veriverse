@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
-import { getUserFromRequest } from "@/lib/auth";
+import { getUserFromRequest, requireActiveUser } from "@/lib/auth";
 import { tryActivateReferral } from "@/lib/referrals";
 
 const ALLOWED_INTERESTS = new Set([
@@ -41,14 +41,9 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
-
-    if (!user) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
     const body = await req.json();
     const skip = body?.skip === true;
