@@ -17,5 +17,6 @@ const FollowSchema = new Schema(
 );
 
 FollowSchema.index({ follower: 1, following: 1 }, { unique: true });
+FollowSchema.index({ following: 1 });
 
 export default models.Follow || model("Follow", FollowSchema);

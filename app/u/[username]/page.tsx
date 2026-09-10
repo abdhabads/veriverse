@@ -48,8 +48,10 @@ export default function PublicProfilePage({
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentUserChecked, setCurrentUserChecked] = useState(false);
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  const [followsYou, setFollowsYou] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [messageBusy, setMessageBusy] = useState(false);
+  const [followCounts, setFollowCounts] = useState<{ followers: number; following: number } | null>(null);
 
   useEffect(() => {
     fetchProfile();
@@ -57,12 +59,29 @@ export default function PublicProfilePage({
   }, []);
 
   useEffect(() => {
+    if (!user) return;
+
+    axios
+      .get(`/api/followers/${user._id}`)
+      .then((res) =>
+        setFollowCounts({
+          followers: Number(res.data?.followers || 0),
+          following: Number(res.data?.following || 0),
+        })
+      )
+      .catch(() => setFollowCounts(null));
+  }, [user]);
+
+  useEffect(() => {
     if (!user || !currentUser) return;
     if (String(currentUser._id) === String(user._id)) return;
 
     api
       .get("/follow", { params: { targetUserId: user._id } })
-      .then((res) => setIsFollowing(Boolean(res.data.following)))
+      .then((res) => {
+        setIsFollowing(Boolean(res.data.following));
+        setFollowsYou(Boolean(res.data.followsYou));
+      })
       .catch(() => setIsFollowing(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, currentUser]);
@@ -139,6 +158,27 @@ export default function PublicProfilePage({
                 <h3 className="text-2xl font-semibold">{user.username}</h3>
                 <p className="vv-subtitle">Reputation: {user.reputation}</p>
                 <p className="vv-subtitle">Reward Points: {user.rewardPoints}</p>
+                {followCounts && (
+                  <p className="vv-subtitle mt-1">
+                    <button
+                      type="button"
+                      data-testid="followers-count-link"
+                      onClick={() => router.push(`/u/${user.username}/followers`)}
+                      className="vv-link"
+                    >
+                      {followCounts.followers} Followers
+                    </button>
+                    {" · "}
+                    <button
+                      type="button"
+                      data-testid="following-count-link"
+                      onClick={() => router.push(`/u/${user.username}/following`)}
+                      className="vv-link"
+                    >
+                      {followCounts.following} Following
+                    </button>
+                  </p>
+                )}
               </div>
             </div>
 
@@ -156,6 +196,11 @@ export default function PublicProfilePage({
                     >
                       {isFollowing ? "Following" : "Follow"}
                     </button>
+                  )}
+                  {followsYou && (
+                    <span data-testid="follows-you-pill" className="vv-pill-gray">
+                      Follows you
+                    </span>
                   )}
                   <button
                     type="button"

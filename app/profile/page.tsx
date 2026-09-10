@@ -13,6 +13,13 @@ import {
 } from "@/lib/profileTrustClient";
 import { api, getErrorMessage } from "@/lib/apiClient";
 
+type Suggestion = {
+  _id: string;
+  username: string;
+  avatarUrl?: string;
+  reputation: number;
+};
+
 type UserProfile = {
   _id: string;
   username: string;
@@ -50,6 +57,9 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [followCounts, setFollowCounts] = useState<{ followers: number; following: number } | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestionBusy, setSuggestionBusy] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadProfilePage();
@@ -67,10 +77,40 @@ export default function ProfilePage() {
 
       setProfile(data.user || null);
       setPosts(data.posts || []);
+
+      if (data.user?._id) {
+        api
+          .get(`/followers/${data.user._id}`)
+          .then((res) =>
+            setFollowCounts({
+              followers: Number(res.data?.followers || 0),
+              following: Number(res.data?.following || 0),
+            })
+          )
+          .catch(() => setFollowCounts(null));
+      }
+
+      api
+        .get("/follow/suggestions")
+        .then((res) => setSuggestions(res.data?.suggestions || []))
+        .catch(() => setSuggestions([]));
     } catch (error: any) {
       showError(getErrorMessage(error, "Failed to load profile"));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function followSuggestion(targetUserId: string) {
+    if (suggestionBusy[targetUserId]) return;
+    setSuggestionBusy((prev) => ({ ...prev, [targetUserId]: true }));
+    try {
+      await api.post("/follow", { targetUserId });
+      setSuggestions((prev) => prev.filter((item) => item._id !== targetUserId));
+    } catch (error: any) {
+      showError(getErrorMessage(error, "Failed to follow user"));
+    } finally {
+      setSuggestionBusy((prev) => ({ ...prev, [targetUserId]: false }));
     }
   }
 
@@ -146,6 +186,27 @@ export default function ProfilePage() {
                     <span className="vv-pill-gray">{profile.role}</span>
                     {renderStatusBadge(profile.moderationStatus)}
                   </div>
+                  {followCounts && (
+                    <p className="vv-subtitle mt-2">
+                      <button
+                        type="button"
+                        data-testid="followers-count-link"
+                        onClick={() => router.push(`/u/${profile.username}/followers`)}
+                        className="vv-link"
+                      >
+                        {followCounts.followers} Followers
+                      </button>
+                      {" · "}
+                      <button
+                        type="button"
+                        data-testid="following-count-link"
+                        onClick={() => router.push(`/u/${profile.username}/following`)}
+                        className="vv-link"
+                      >
+                        {followCounts.following} Following
+                      </button>
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -247,6 +308,51 @@ export default function ProfilePage() {
                   </button>
                 </div>
               </div>
+
+              {suggestions.length > 0 && (
+                <div className="vv-card p-5">
+                  <h2 className="vv-section-title mb-4">Who to Follow</h2>
+                  <div className="space-y-3">
+                    {suggestions.map((suggestion) => (
+                      <div
+                        key={suggestion._id}
+                        className="flex items-center justify-between gap-3"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/u/${suggestion.username}`)}
+                          className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                        >
+                          {suggestion.avatarUrl ? (
+                            <img
+                              src={suggestion.avatarUrl}
+                              alt={suggestion.username}
+                              className="w-9 h-9 rounded-full object-cover border"
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
+                              {suggestion.username.slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-semibold text-sm vv-link">{suggestion.username}</p>
+                            <p className="text-xs text-slate-500">Reputation: {suggestion.reputation}</p>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`suggestion-follow-${suggestion.username}`}
+                          onClick={() => followSuggestion(suggestion._id)}
+                          disabled={Boolean(suggestionBusy[suggestion._id])}
+                          className="vv-btn-primary"
+                        >
+                          {suggestionBusy[suggestion._id] ? "..." : "Follow"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

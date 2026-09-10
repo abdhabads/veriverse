@@ -40,16 +40,28 @@ export async function GET(req: Request) {
 
       const validIds = requestedIds.filter((id) => isValidObjectId(id));
       const states: Record<string, boolean> = {};
+      const followsYouStates: Record<string, boolean> = {};
 
       const otherIds = validIds.filter((id) => id !== String(user._id));
       if (otherIds.length > 0) {
-        const follows = await Follow.find({
-          follower: user._id,
-          following: { $in: otherIds },
-        }).select("following");
+        const [follows, followers] = await Promise.all([
+          Follow.find({
+            follower: user._id,
+            following: { $in: otherIds },
+          }).select("following"),
+          // Reverse direction in one bounded query, not one per user -
+          // efficiently served by the existing {follower:1, following:1}
+          // index (follower is an $in on the leading key).
+          Follow.find({
+            follower: { $in: otherIds },
+            following: user._id,
+          }).select("follower"),
+        ]);
         const followingSet = new Set(follows.map((item: any) => String(item.following)));
+        const followerSet = new Set(followers.map((item: any) => String(item.follower)));
         for (const id of otherIds) {
           states[id] = followingSet.has(id);
+          followsYouStates[id] = followerSet.has(id);
         }
       }
 
@@ -57,9 +69,10 @@ export async function GET(req: Request) {
       // single-target form's own self behavior below.
       if (validIds.includes(String(user._id))) {
         states[String(user._id)] = false;
+        followsYouStates[String(user._id)] = false;
       }
 
-      return NextResponse.json({ success: true, states });
+      return NextResponse.json({ success: true, states, followsYouStates });
     }
 
     const targetUserId = searchParams.get("targetUserId");
@@ -68,15 +81,20 @@ export async function GET(req: Request) {
     }
 
     if (String(user._id) === targetUserId) {
-      return NextResponse.json({ success: true, following: false });
+      return NextResponse.json({ success: true, following: false, followsYou: false, mutual: false });
     }
 
-    const existing = await Follow.exists({
-      follower: user._id,
-      following: targetUserId,
-    });
+    const [following, followsYou] = await Promise.all([
+      Follow.exists({ follower: user._id, following: targetUserId }),
+      Follow.exists({ follower: targetUserId, following: user._id }),
+    ]);
 
-    return NextResponse.json({ success: true, following: Boolean(existing) });
+    return NextResponse.json({
+      success: true,
+      following: Boolean(following),
+      followsYou: Boolean(followsYou),
+      mutual: Boolean(following) && Boolean(followsYou),
+    });
   } catch {
     return NextResponse.json({ success: false, message: "Failed to fetch follow state" }, { status: 500 });
   }
