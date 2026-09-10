@@ -16,6 +16,7 @@ const USER_PROTECTED_PATHS = [
   "/search",
   "/appeals",
   "/safety",
+  "/messages",
 ];
 
 const ADMIN_PROTECTED_PATHS = ["/admin"];
@@ -77,6 +78,7 @@ export const config = {
     "/search/:path*",
     "/appeals/:path*",
     "/safety/:path*",
+    "/messages/:path*",
     "/admin/:path*",
     "/expert/:path*",
     "/login",
