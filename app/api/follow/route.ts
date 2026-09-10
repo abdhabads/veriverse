@@ -7,6 +7,7 @@ import { getUserFromRequest } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
 import { isValidObjectId } from "@/lib/validation";
+import { hasBidirectionalBlock } from "@/lib/messaging";
 
 // Aligned with Search's own max People results (app/api/search/route.ts),
 // so a single results page can always be resolved in one request.
@@ -141,6 +142,14 @@ export async function POST(req: Request) {
         message: "Unfollowed",
         following: false,
       });
+    }
+
+    const blocked = await hasBidirectionalBlock(String(user._id), targetUserId);
+    if (blocked) {
+      return NextResponse.json(
+        { success: false, message: "You cannot follow this user" },
+        { status: 403 }
+      );
     }
 
     await Follow.create({

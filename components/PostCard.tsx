@@ -419,9 +419,7 @@ export default function PostCard({
           </div>
         )}
 
-        {(currentUser?.role === "admin" ||
-          currentUser?.role === "expert" ||
-          currentUserId === post.author?._id) && (
+        {Boolean(currentUser) && (
           <div className="vv-post-action-cluster">
             <p className="vv-post-action-title">Moderate And Manage</p>
             <div className="space-y-3">
@@ -452,8 +450,7 @@ export default function PostCard({
                   </button>
                 </div>
               )}
-              {currentUserId !== post.author?._id &&
-                (currentUser?.role === "admin" || currentUser?.role === "expert") && (
+              {currentUserId !== post.author?._id && (
                 <>
                   <div className="vv-post-action-grid xl:grid-cols-2">
                     <button

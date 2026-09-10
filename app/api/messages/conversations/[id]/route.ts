@@ -46,7 +46,12 @@ export async function GET(req: Request, context: RouteContext) {
       );
     }
 
-    const isParticipant = (conversation.participants || []).some(
+    // populate() leaves a null slot for a participant whose account was
+    // since deleted - filter those out before checking participation/
+    // counterpart so a stale reference can't throw.
+    const participants = (conversation.participants || []).filter(Boolean);
+
+    const isParticipant = participants.some(
       (participant: any) => String(participant._id) === String(user._id)
     );
     if (!isParticipant) {
@@ -56,9 +61,18 @@ export async function GET(req: Request, context: RouteContext) {
       );
     }
 
-    const counterpart = (conversation.participants || []).find(
+    const counterpart = participants.find(
       (participant: any) => String(participant._id) !== String(user._id)
     );
+
+    if (!counterpart) {
+      // The other participant's account no longer exists - fail gracefully
+      // rather than surfacing a broken/fake counterpart.
+      return NextResponse.json(
+        { success: false, message: "This conversation is no longer available" },
+        { status: 404 }
+      );
+    }
 
     const recentMessages = await Message.find({ conversation: id })
       .sort({ createdAt: -1 })

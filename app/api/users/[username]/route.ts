@@ -12,7 +12,13 @@ export async function GET(req: Request, context: RouteContext) {
     await connectDB();
     const { username } = await context.params;
 
-    const user = await User.findOne({ username }).select("-password");
+    // Public-facing allowlist only - this route is unauthenticated, so any
+    // field returned here is visible to anyone. Never widen this with a
+    // denylist (e.g. "-password"): new User fields must be explicitly
+    // reviewed before they become publicly exposed.
+    const user = await User.findOne({ username }).select(
+      "username bio avatarUrl reputation rewardPoints badges"
+    );
     if (!user) {
       return NextResponse.json(
         { success: false, message: "User not found" },

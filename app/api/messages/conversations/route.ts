@@ -32,37 +32,47 @@ export async function GET(req: Request) {
       .limit(20)
       .populate("participants", "username avatarUrl reputation");
 
-    const shaped = conversations.map((conversation: any) => {
-      const counterpart = (conversation.participants || []).find(
-        (participant: any) => String(participant._id) !== String(user._id)
-      );
+    const shaped = conversations
+      .map((conversation: any) => {
+        // populate() leaves a null slot for a participant whose account was
+        // since deleted - filter those out before searching for the
+        // counterpart so a stale reference can't throw on `.find()`.
+        const participants = (conversation.participants || []).filter(Boolean);
+        const counterpart = participants.find(
+          (participant: any) => String(participant._id) !== String(user._id)
+        );
 
-      const myState = (conversation.participantState || []).find(
-        (state: any) => String(state.user) === String(user._id)
-      );
+        if (!counterpart) {
+          // The only other participant's account no longer exists - omit
+          // this conversation rather than surface a broken/fake counterpart.
+          return null;
+        }
 
-      const lastReadAt = myState?.lastReadAt || null;
-      const isUnread = Boolean(
-        conversation.lastMessageAt &&
-          (!lastReadAt || new Date(lastReadAt) < new Date(conversation.lastMessageAt))
-      );
+        const myState = (conversation.participantState || []).find(
+          (state: any) => String(state.user) === String(user._id)
+        );
 
-      return {
-        _id: conversation._id,
-        counterpart: counterpart
-          ? {
-              _id: counterpart._id,
-              username: counterpart.username,
-              avatarUrl: counterpart.avatarUrl || "",
-              reputation: Number(counterpart.reputation || 0),
-            }
-          : null,
-        lastMessageAt: conversation.lastMessageAt,
-        lastMessagePreview: conversation.lastMessagePreview || "",
-        lastReadAt,
-        isUnread,
-      };
-    });
+        const lastReadAt = myState?.lastReadAt || null;
+        const isUnread = Boolean(
+          conversation.lastMessageAt &&
+            (!lastReadAt || new Date(lastReadAt) < new Date(conversation.lastMessageAt))
+        );
+
+        return {
+          _id: conversation._id,
+          counterpart: {
+            _id: counterpart._id,
+            username: counterpart.username,
+            avatarUrl: counterpart.avatarUrl || "",
+            reputation: Number(counterpart.reputation || 0),
+          },
+          lastMessageAt: conversation.lastMessageAt,
+          lastMessagePreview: conversation.lastMessagePreview || "",
+          lastReadAt,
+          isUnread,
+        };
+      })
+      .filter((conversation): conversation is NonNullable<typeof conversation> => conversation !== null);
 
     // Bounded to the same page of conversations already fetched above,
     // matching the existing Notification unreadCount convention (computed
