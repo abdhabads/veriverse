@@ -9,6 +9,13 @@ import { cleanString, isValidEmail } from "@/lib/validation";
 import { fail } from "@/lib/apiResponse";
 import { NextResponse } from "next/server";
 
+// Fixed placeholder hash used only to give a nonexistent-email attempt
+// roughly the same bcrypt cost as a real wrong-password attempt, narrowing
+// the timing side-channel between the two. Not tied to any real account -
+// never generated per-request, never persisted.
+const DUMMY_PASSWORD_HASH =
+  "$2b$10$x.nDbsETmYxpJ3HfBKNUZuBUcsXHDeLtXkXkg94/vb6c00PzI8mBy";
+
 export async function POST(req: Request) {
   try {
     await connectDB();
@@ -44,9 +51,21 @@ export async function POST(req: Request) {
     const user = await User.findOne({ email });
 
     if (!user) {
+      // Dummy comparison only - there is no real hash to check against, but
+      // running one keeps this branch's timing close to a real wrong-
+      // password attempt below, and the response is identical either way.
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
       return fail("Invalid credentials", 401);
     }
 
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return fail("Invalid credentials", 401);
+    }
+
+    // Account-specific moderation state is only safe to disclose after the
+    // caller has proven they know the password - never before.
     if (user.isDeactivated) {
       return fail("This account has been deactivated. You can restore it from the login page.", 403);
     }
@@ -68,12 +87,6 @@ export async function POST(req: Request) {
       user.moderationStatus = "active";
       user.suspendedUntil = null;
       await user.save();
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return fail("Invalid credentials", 401);
     }
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET!, {
