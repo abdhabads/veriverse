@@ -29,6 +29,7 @@ const AuditLogSchema = new Schema(
         "admin_user_adjustment",
         "admin_role_assigned",
         "account_self_deleted",
+        "account_self_restored",
       ],
       required: true,
     },
