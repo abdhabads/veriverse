@@ -6,11 +6,13 @@
 // that already existed in the parent, unchanged.
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
 import TrustSummaryLine from "@/components/TrustSummaryLine";
 import ActionIcon from "@/components/ActionIcons";
+import { sharePost } from "@/lib/shareLink";
 
 export type User = {
   _id: string;
@@ -221,6 +223,20 @@ export default function PostCard({
   onLoadComments,
   onNavigateToProfile,
 }: PostCardProps) {
+  const [shareFeedback, setShareFeedback] = useState("");
+
+  const handleShare = async () => {
+    setShareFeedback("");
+    const result = await sharePost({
+      postId: post._id,
+      title: "VeriVerse post",
+      text: "Take a look at this post on VeriVerse and see what the evidence says.",
+    });
+
+    if (result.status === "cancelled") return;
+    if (result.message) setShareFeedback(result.message);
+  };
+
   return (
     <div data-testid="post-card" className="vv-card p-3 sm:p-4">
       <div className="vv-post-panel p-5 sm:p-6">
@@ -375,6 +391,17 @@ export default function PostCard({
                 <span>{post.repostsCount || 0}</span>
               </button>
               <button
+                type="button"
+                data-testid={`share-post-${post._id}`}
+                onClick={handleShare}
+                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
+              >
+                <span className="flex items-center gap-1.5">
+                  <span aria-hidden="true">🔗</span>
+                  Share
+                </span>
+              </button>
+              <button
                 onClick={() => onSave(post._id)}
                 className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
               >
@@ -384,6 +411,11 @@ export default function PostCard({
                 </span>
               </button>
             </div>
+            {shareFeedback && (
+              <p data-testid={`share-feedback-${post._id}`} className="mt-2 text-xs text-slate-500">
+                {shareFeedback}
+              </p>
+            )}
           </div>
         )}
 
@@ -494,7 +526,7 @@ export default function PostCard({
           className="inline-flex items-center gap-1.5 rounded-lg text-sm text-slate-600 hover:text-veriverse-dark focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] sm:hidden"
         >
           <span aria-hidden="true">💬</span>
-          {formatCommentCountLabel(comments)}
+          View conversation &middot; {formatCommentCountLabel(comments)}
         </Link>
 
         <button
@@ -505,7 +537,7 @@ export default function PostCard({
           className="hidden items-center gap-1.5 rounded-lg text-sm text-slate-600 transition hover:text-veriverse-dark focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] sm:inline-flex"
         >
           <span aria-hidden="true">💬</span>
-          {formatCommentCountLabel(comments)}
+          View conversation &middot; {formatCommentCountLabel(comments)}
         </button>
 
         {isCommentsExpanded && (

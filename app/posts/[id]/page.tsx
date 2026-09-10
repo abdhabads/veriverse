@@ -14,6 +14,7 @@ import VerificationBadge from "@/components/VerificationBadge";
 import { getErrorMessage } from "@/lib/apiClient";
 import { getExpertReviewReasons } from "@/lib/expertReview";
 import { getAiLabelTone, getDisplayedAiLabel, shouldShowRawTrustStatus } from "@/lib/trustPresentation";
+import { sharePost } from "@/lib/shareLink";
 
 type Author = {
   _id: string;
@@ -82,6 +83,21 @@ export default function PostDetailPage({
 
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState("");
+
+  const [shareFeedback, setShareFeedback] = useState("");
+
+  const handleShare = async () => {
+    if (!post) return;
+    setShareFeedback("");
+    const result = await sharePost({
+      postId: post._id,
+      title: "VeriVerse post",
+      text: "Take a look at this post on VeriVerse and see what the evidence says.",
+    });
+
+    if (result.status === "cancelled") return;
+    if (result.message) setShareFeedback(result.message);
+  };
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -337,25 +353,43 @@ export default function PostDetailPage({
 
       {post ? (
         <div className="vv-card p-5 sm:p-6 mb-6">
-          <div className="mb-3 flex items-center gap-3">
-            {post.author?.avatarUrl ? (
-              <Image
-                src={post.author.avatarUrl}
-                alt={post.author.username}
-                width={40}
-                height={40}
-                unoptimized
-                className="w-10 h-10 rounded-full object-cover border"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
-                {post.author?.username?.slice(0, 1)?.toUpperCase()}
-              </div>
-            )}
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {post.author?.avatarUrl ? (
+                <Image
+                  src={post.author.avatarUrl}
+                  alt={post.author.username}
+                  width={40}
+                  height={40}
+                  unoptimized
+                  className="w-10 h-10 rounded-full object-cover border"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
+                  {post.author?.username?.slice(0, 1)?.toUpperCase()}
+                </div>
+              )}
 
-            <div>
-              <p className="font-semibold">{post.author?.username}</p>
-              <p className="vv-subtitle">Reputation: {post.author?.reputation}</p>
+              <div>
+                <p className="font-semibold">{post.author?.username}</p>
+                <p className="vv-subtitle">Reputation: {post.author?.reputation}</p>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <button
+                type="button"
+                data-testid="share-post-detail"
+                onClick={handleShare}
+                className="vv-btn-secondary"
+              >
+                <span aria-hidden="true">🔗</span> Share
+              </button>
+              {shareFeedback && (
+                <p data-testid="share-feedback-detail" className="mt-1 text-xs text-slate-500">
+                  {shareFeedback}
+                </p>
+              )}
             </div>
           </div>
 
