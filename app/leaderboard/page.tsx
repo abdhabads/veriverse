@@ -50,7 +50,7 @@ export default function LeaderboardPage() {
   return (
     <PageWrapper
       title="Leaderboard"
-      subtitle="See which contributors are building the most trust and reward momentum."
+      subtitle="See contributors with the highest reputation and reward activity on VeriVerse."
     >
       {message && <Toast message={message} type={messageType} />}
 
@@ -66,6 +66,11 @@ export default function LeaderboardPage() {
               Back to Profile
             </button>
           </div>
+
+          <p className="text-xs text-slate-500">
+            Leaderboard position reflects historical participation outcomes. It does not
+            determine whether an individual claim is true.
+          </p>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="vv-card p-5">

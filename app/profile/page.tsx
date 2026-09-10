@@ -12,6 +12,7 @@ import {
   fetchMyProfile,
 } from "@/lib/profileTrustClient";
 import { api, getErrorMessage } from "@/lib/apiClient";
+import ReputationInfo from "@/components/ReputationInfo";
 
 type Suggestion = {
   _id: string;
@@ -216,6 +217,7 @@ export default function ProfilePage() {
                   <p className="text-xl font-semibold text-veriverse-dark">
                     {Number(profile.reputation || 0)}
                   </p>
+                  <ReputationInfo className="mt-1" />
                 </div>
 
                 <div className="vv-card-soft p-3">

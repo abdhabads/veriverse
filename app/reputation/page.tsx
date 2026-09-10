@@ -10,6 +10,7 @@ import { requireAuthenticated } from "@/lib/frontendAccess";
 import { usePageState } from "@/hooks/usePageState";
 import { fetchMyReputationLogs } from "@/lib/profileTrustClient";
 import { getErrorMessage } from "@/lib/apiClient";
+import ReputationInfo from "@/components/ReputationInfo";
 
 type ReputationLog = {
   _id: string;
@@ -59,7 +60,7 @@ export default function ReputationPage() {
   return (
     <PageWrapper
       title="Reputation"
-      subtitle="Track how your trust score changes over time."
+      subtitle="Track how your reputation changes as claims you publish reach finalized outcomes."
     >
       {message && <Toast message={message} type={messageType} />}
 
@@ -79,7 +80,31 @@ export default function ReputationPage() {
           <div className="vv-card p-5">
             <p className="text-sm text-slate-500 mb-1">Current Reputation</p>
             <p className="text-4xl font-bold text-veriverse-dark">{total}</p>
+            <ReputationInfo variant="full" className="mt-2" />
           </div>
+
+          <details className="vv-card p-5">
+            <summary className="cursor-pointer select-none font-medium text-veriverse-dark">
+              How reputation works
+            </summary>
+            <div className="mt-3 space-y-2 text-sm text-slate-700">
+              <p>
+                Reputation is user-level - it reflects how your past posts were evaluated, not
+                whether any single claim is currently true. Claim verification stays evidence-based
+                and is shown separately on each post.
+              </p>
+              <p>Voting or commenting alone does not change your reputation.</p>
+              <p>Reputation changes when a post you authored reaches a finalized outcome:</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Community-finalized as verified: +5 reputation</li>
+                <li>Community-finalized as false: -5 reputation</li>
+                <li>Community-finalized as disputed: no reputation change</li>
+                <li>Expert-finalized as verified: +7 reputation</li>
+                <li>Expert-finalized as false: -7 reputation</li>
+                <li>Expert-finalized as disputed: no reputation change</li>
+              </ul>
+            </div>
+          </details>
 
           {logs.length === 0 ? (
             <EmptyState

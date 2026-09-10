@@ -8,6 +8,7 @@ import EmptyState from "@/components/EmptyState";
 import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
 import ModerationReasonList from "@/components/ModerationReasonList";
 import PageWrapper from "@/components/PageWrapper";
+import ReputationInfo from "@/components/ReputationInfo";
 import Toast from "@/components/Toast";
 import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 import VerificationBadge from "@/components/VerificationBadge";
@@ -372,7 +373,8 @@ export default function PostDetailPage({
 
               <div>
                 <p className="font-semibold">{post.author?.username}</p>
-                <p className="vv-subtitle">Reputation: {post.author?.reputation}</p>
+                <p className="vv-subtitle">User reputation: {post.author?.reputation}</p>
+                <ReputationInfo className="mt-1" />
               </div>
             </div>
 

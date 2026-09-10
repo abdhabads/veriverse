@@ -7,6 +7,7 @@ import PageWrapper from "@/components/PageWrapper";
 import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 import { getAiLabelTone, getDisplayedAiLabel } from "@/lib/trustPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
+import ReputationInfo from "@/components/ReputationInfo";
 
 type User = {
   _id: string;
@@ -157,6 +158,7 @@ export default function PublicProfilePage({
               <div>
                 <h3 className="text-2xl font-semibold">{user.username}</h3>
                 <p className="vv-subtitle">Reputation: {user.reputation}</p>
+                <ReputationInfo className="mt-1" />
                 <p className="vv-subtitle">Reward Points: {user.rewardPoints}</p>
                 {followCounts && (
                   <p className="vv-subtitle mt-1">
