@@ -41,6 +41,7 @@ export default function Navbar() {
   ];
 
   const secondaryLinks = [
+    { label: "Messages", path: "/messages" },
     { label: "Notifications", path: "/notifications" },
   ];
 

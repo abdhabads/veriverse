@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import axios from "axios";
 import PageWrapper from "@/components/PageWrapper";
 import TrustVerdictBadge from "@/components/TrustVerdictBadge";
@@ -40,6 +41,7 @@ export default function PublicProfilePage({
 }: {
   params: Promise<{ username: string }>;
 }) {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [message, setMessage] = useState("");
@@ -47,6 +49,7 @@ export default function PublicProfilePage({
   const [currentUserChecked, setCurrentUserChecked] = useState(false);
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
+  const [messageBusy, setMessageBusy] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -100,6 +103,18 @@ export default function PublicProfilePage({
     }
   };
 
+  const openConversation = async () => {
+    if (!user || messageBusy) return;
+    setMessageBusy(true);
+    try {
+      const res = await api.post("/messages/conversations", { targetUserId: user._id });
+      router.push(`/messages/${res.data.conversation._id}`);
+    } catch (error: any) {
+      setMessage(getErrorMessage(error, "Failed to start conversation"));
+      setMessageBusy(false);
+    }
+  };
+
   return (
     <PageWrapper title="Public Profile" subtitle="See a contributor's reputation, badges, and published claims.">
       {message && <div className="vv-banner mb-4">{message}</div>}
@@ -129,17 +144,29 @@ export default function PublicProfilePage({
 
             {currentUserChecked &&
               currentUser &&
-              String(currentUser._id) !== String(user._id) &&
-              isFollowing !== null && (
-                <button
-                  type="button"
-                  data-testid="follow-toggle"
-                  onClick={toggleFollow}
-                  disabled={followBusy}
-                  className={isFollowing ? "vv-btn-secondary" : "vv-btn-primary"}
-                >
-                  {isFollowing ? "Following" : "Follow"}
-                </button>
+              String(currentUser._id) !== String(user._id) && (
+                <div className="flex items-center gap-2">
+                  {isFollowing !== null && (
+                    <button
+                      type="button"
+                      data-testid="follow-toggle"
+                      onClick={toggleFollow}
+                      disabled={followBusy}
+                      className={isFollowing ? "vv-btn-secondary" : "vv-btn-primary"}
+                    >
+                      {isFollowing ? "Following" : "Follow"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    data-testid="message-button"
+                    onClick={openConversation}
+                    disabled={messageBusy}
+                    className="vv-btn-secondary"
+                  >
+                    {messageBusy ? "Opening..." : "Message"}
+                  </button>
+                </div>
               )}
           </div>
 
