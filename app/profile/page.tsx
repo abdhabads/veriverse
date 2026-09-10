@@ -212,6 +212,12 @@ export default function ProfilePage() {
                   Safety Controls
                 </button>
                 <button
+                  onClick={() => router.push("/referrals")}
+                  className="vv-btn-secondary"
+                >
+                  Referrals
+                </button>
+                <button
                   onClick={() => router.push("/account-management")}
                   className="vv-btn-secondary"
                 >

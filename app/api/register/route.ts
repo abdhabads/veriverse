@@ -1,5 +1,6 @@
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
+import Referral from "@/models/Referral";
 import bcrypt from "bcryptjs";
 import { verifyCaptchaToken } from "@/lib/captcha";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
@@ -9,9 +10,31 @@ import {
   escapeRegexLiteral,
   isStrongEnoughPassword,
   isValidEmail,
+  isValidObjectId,
   isValidUsername,
 } from "@/lib/validation";
 import { ok, fail } from "@/lib/apiResponse";
+
+// Mirrors the exact unavailable-account semantics already enforced at login
+// (app/api/login/route.ts): deactivated, banned, or currently-suspended
+// accounts cannot be a referral's attribution target. An expired suspension
+// is not treated as unavailable, matching login's own auto-reactivation.
+function isReferrerAvailable(referrer: {
+  isDeactivated?: boolean;
+  moderationStatus?: string;
+  suspendedUntil?: Date | string | null;
+}): boolean {
+  if (referrer.isDeactivated) return false;
+  if (referrer.moderationStatus === "banned") return false;
+  if (
+    referrer.moderationStatus === "suspended" &&
+    referrer.suspendedUntil &&
+    new Date(referrer.suspendedUntil) > new Date()
+  ) {
+    return false;
+  }
+  return true;
+}
 
 export async function POST(req: Request) {
   try {
@@ -73,6 +96,19 @@ export async function POST(req: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Referral attribution is best-effort and never authoritative from the
+    // client beyond "here is the code from the URL" - the referrer is
+    // independently resolved and validated server-side, and an
+    // invalid/nonexistent/unavailable referrer must never block signup.
+    const referrerId = typeof body.referrerId === "string" ? body.referrerId : "";
+    let validReferrer: { _id: unknown } | null = null;
+    if (referrerId && isValidObjectId(referrerId)) {
+      const candidate = await User.findById(referrerId);
+      if (candidate && isReferrerAvailable(candidate)) {
+        validReferrer = candidate;
+      }
+    }
+
     const user = await User.create({
       username,
       email,
@@ -80,6 +116,23 @@ export async function POST(req: Request) {
       role: "user",
       termsAcceptedAt: new Date(),
     });
+
+    if (validReferrer && String(validReferrer._id) !== String(user._id)) {
+      try {
+        await Referral.create({
+          referrer: validReferrer._id,
+          referredUser: user._id,
+          status: "joined",
+        });
+      } catch (referralError: any) {
+        // Duplicate-key (11000) means this account is already attributed -
+        // a safe no-op. Any other failure must not affect the account that
+        // was already created successfully above.
+        if (referralError?.code !== 11000) {
+          console.error("Failed to create referral:", referralError);
+        }
+      }
+    }
 
     return ok(
       {

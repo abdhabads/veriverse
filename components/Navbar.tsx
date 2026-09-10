@@ -53,6 +53,7 @@ export default function Navbar() {
   const secondaryLinks = [
     { label: "Messages", path: "/messages" },
     { label: "Notifications", path: "/notifications" },
+    { label: "Referrals", path: "/referrals" },
   ];
 
   const go = (path: string) => {

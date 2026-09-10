@@ -14,6 +14,7 @@ import { cleanString } from "@/lib/validation";
 import { ok, fail } from "@/lib/apiResponse";
 import { determinePostStatus } from "@/lib/postStatusCascade";
 import { recordTrustEvent } from "@/lib/trustEvents";
+import { tryActivateReferral } from "@/lib/referrals";
 
 export async function POST(req: Request) {
   try {
@@ -149,6 +150,12 @@ export async function POST(req: Request) {
     }
 
     await post.populate("author", "username reputation avatarUrl badges");
+
+    try {
+      await tryActivateReferral(userId);
+    } catch (referralError) {
+      console.error("Referral activation check failed after post creation:", referralError);
+    }
 
     const normalizedPost = {
       ...post.toObject(),

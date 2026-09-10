@@ -46,12 +46,20 @@ export default function RegisterPage() {
     setIsSubmitting(true);
 
     try {
+      // Read directly from window.location rather than useSearchParams() -
+      // this page is a static export and useSearchParams() requires a
+      // Suspense boundary (the same constraint already worked around for
+      // /feed's mode switch). The client only transports this value; the
+      // server independently validates and decides whether it counts.
+      const referrerId = new URLSearchParams(window.location.search).get("ref") || "";
+
       await axios.post("/api/register", {
         username: username.trim(),
         email: email.trim(),
         password,
         captchaToken: captchaToken ?? "",
         agreedToTerms: true,
+        referrerId,
       });
 
       setMessageType("success");

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { getUserFromRequest } from "@/lib/auth";
+import { tryActivateReferral } from "@/lib/referrals";
 
 const ALLOWED_INTERESTS = new Set([
   "health",
@@ -71,6 +72,12 @@ export async function PATCH(req: Request) {
 
     user.onboardingCompleted = true;
     await user.save();
+
+    try {
+      await tryActivateReferral(String(user._id));
+    } catch (referralError) {
+      console.error("Referral activation check failed after onboarding:", referralError);
+    }
 
     return NextResponse.json({
       success: true,
