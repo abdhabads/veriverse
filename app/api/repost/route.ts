@@ -6,6 +6,7 @@ import Notification from "@/models/Notification";
 import { requireActiveUser } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
+import { hasBidirectionalBlock } from "@/lib/messaging";
 
 export async function POST(req: Request) {
   try {
@@ -33,6 +34,18 @@ export async function POST(req: Request) {
       await Post.findByIdAndUpdate(postId, { $inc: { repostsCount: -1 } });
 
       return NextResponse.json({ success: true, reposted: false });
+    }
+
+    // Block is a reciprocal interaction boundary: reject a *new* repost of a
+    // blocked party's content before creating anything. Removing an existing
+    // repost (the branch above) is always allowed, even across a block, so
+    // this never traps stale state.
+    const targetPost = await Post.findById(postId).select("author");
+    if (targetPost && (await hasBidirectionalBlock(String(user._id), String(targetPost.author)))) {
+      return NextResponse.json(
+        { success: false, message: "You cannot repost this post" },
+        { status: 403 }
+      );
     }
 
     await Repost.create({ user: user._id, post: postId });

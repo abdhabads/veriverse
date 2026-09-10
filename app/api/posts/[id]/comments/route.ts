@@ -8,6 +8,7 @@ import { requireActiveUser } from "@/lib/auth";
 import { extractMentions } from "@/lib/mentions";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
+import { hasBidirectionalBlock } from "@/lib/messaging";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -69,14 +70,36 @@ export async function POST(req: Request, context: RouteContext) {
       );
     }
 
+    let parentAuthorId: string | null = null;
     if (parentComment) {
-      const parent = await Comment.findById(parentComment);
+      const parent = await Comment.findById(parentComment).populate("author", "username");
       if (!parent || String(parent.post) !== String(postId)) {
         return NextResponse.json(
           { success: false, message: "Invalid parent comment" },
           { status: 400 }
         );
       }
+      parentAuthorId = parent.author
+        ? String((parent.author as any)._id || parent.author)
+        : null;
+    }
+
+    // Block is a reciprocal interaction boundary: reject the direct
+    // interaction (commenting on this post, or replying to this specific
+    // comment) before anything is created. Unrelated mentions elsewhere in
+    // the comment are handled separately below (suppressed, not rejected).
+    if (await hasBidirectionalBlock(userId, String(post.author))) {
+      return NextResponse.json(
+        { success: false, message: "You cannot comment on this post" },
+        { status: 403 }
+      );
+    }
+
+    if (parentAuthorId && (await hasBidirectionalBlock(userId, parentAuthorId))) {
+      return NextResponse.json(
+        { success: false, message: "You cannot reply to this comment" },
+        { status: 403 }
+      );
     }
 
     const mentions = extractMentions(content.trim());
@@ -104,20 +127,14 @@ export async function POST(req: Request, context: RouteContext) {
       });
     }
 
-    if (parentComment) {
-      const parent = await Comment.findById(parentComment).populate("author", "username");
-      const parentAuthorId = parent?.author
-        ? String((parent.author as any)._id || parent.author)
-        : null;
-      if (parentAuthorId && !notifiedRecipients.has(parentAuthorId)) {
-        notifiedRecipients.add(parentAuthorId);
-        await Notification.create({
-          user: parentAuthorId,
-          type: "comment_received",
-          message: `${user.username} replied to your comment.`,
-          referencePost: post._id,
-        });
-      }
+    if (parentAuthorId && !notifiedRecipients.has(parentAuthorId)) {
+      notifiedRecipients.add(parentAuthorId);
+      await Notification.create({
+        user: parentAuthorId,
+        type: "comment_received",
+        message: `${user.username} replied to your comment.`,
+        referencePost: post._id,
+      });
     }
 
     const mentionedUsers = await User.find({
@@ -126,15 +143,20 @@ export async function POST(req: Request, context: RouteContext) {
 
     for (const mentionedUser of mentionedUsers) {
       const mentionedId = String(mentionedUser._id);
-      if (!notifiedRecipients.has(mentionedId)) {
-        notifiedRecipients.add(mentionedId);
-        await Notification.create({
-          user: mentionedUser._id,
-          type: "comment_received",
-          message: `${user.username} mentioned you in a comment.`,
-          referencePost: post._id,
-        });
-      }
+      if (notifiedRecipients.has(mentionedId)) continue;
+      // A mention of an unrelated third party doesn't reject the comment
+      // (only direct post-author/parent-author interaction does, above) -
+      // it just never notifies a mentioned user the commenter is blocked
+      // with, in either direction.
+      if (await hasBidirectionalBlock(userId, mentionedId)) continue;
+
+      notifiedRecipients.add(mentionedId);
+      await Notification.create({
+        user: mentionedUser._id,
+        type: "comment_received",
+        message: `${user.username} mentioned you in a comment.`,
+        referencePost: post._id,
+      });
     }
 
     const populatedComment = await Comment.findById(comment._id).populate(

@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import UserRelation from "@/models/UserRelation";
+import Follow from "@/models/Follow";
 import { requireActiveUser } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
+import { isValidObjectId } from "@/lib/validation";
 
 export async function POST(req: Request) {
   try {
@@ -27,6 +29,13 @@ export async function POST(req: Request) {
     if (!targetUserId || !["block", "mute"].includes(relationType)) {
       return NextResponse.json(
         { success: false, message: "Invalid request" },
+        { status: 400 }
+      );
+    }
+
+    if (!isValidObjectId(targetUserId)) {
+      return NextResponse.json(
+        { success: false, message: "Invalid target user" },
         { status: 400 }
       );
     }
@@ -55,26 +64,49 @@ export async function POST(req: Request) {
     if (existing) {
       await UserRelation.deleteOne({ _id: existing._id });
 
-      return NextResponse.json({
+      const res = NextResponse.json({
         success: true,
         active: false,
         relationType,
         message: `${relationType} removed`,
       });
+      res.headers.set("Cache-Control", "private, no-store");
+      return res;
     }
 
-    await UserRelation.create({
-      sourceUser: user._id,
-      targetUser: targetUserId,
-      relationType,
-    });
+    try {
+      await UserRelation.create({
+        sourceUser: user._id,
+        targetUser: targetUserId,
+        relationType,
+      });
+    } catch (createError: any) {
+      if (createError?.code !== 11000) throw createError;
+      // Another concurrent request created the identical relation first -
+      // it's active either way, so report success rather than a spurious
+      // failure.
+    }
 
-    return NextResponse.json({
+    if (relationType === "block") {
+      // Block is a reciprocal interaction boundary - neither party should
+      // retain an active Follow relationship across it. Mute never touches
+      // Follow.
+      await Follow.deleteMany({
+        $or: [
+          { follower: user._id, following: targetUserId },
+          { follower: targetUserId, following: user._id },
+        ],
+      });
+    }
+
+    const res = NextResponse.json({
       success: true,
       active: true,
       relationType,
       message: `${relationType} applied`,
     });
+    res.headers.set("Cache-Control", "private, no-store");
+    return res;
   } catch (error) {
     console.error("POST /api/relations error:", error);
     return NextResponse.json(
