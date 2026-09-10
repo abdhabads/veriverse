@@ -304,3 +304,82 @@ test("Following feed response retains private/no-store caching, same as Discover
 
   await apiA.dispose();
 });
+
+// P1.2-B: batched GET /api/follow?targetUserIds=... - added for Search's
+// People results, so a results page can resolve Follow state in one
+// request instead of one per row. Entirely additive to the existing
+// single-target form.
+test("batched GET /api/follow returns correct state for multiple targets, with self as false", async ({ baseURL }) => {
+  const apiA = await playwrightRequest.newContext({ baseURL });
+  const loginRes = await apiA.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+  const selfId = (await loginRes.json()).user._id;
+
+  const userbId = (await (await apiA.get("/api/users/userb")).json()).user._id;
+  const expertId = (await (await apiA.get("/api/users/expert1")).json()).user._id;
+
+  await apiA.post("/api/follow", { data: { targetUserId: userbId } });
+
+  const res = await apiA.get("/api/follow", {
+    params: { targetUserIds: [userbId, expertId, selfId].join(",") },
+  });
+  expect(res.ok()).toBeTruthy();
+  const json = await res.json();
+
+  expect(json.states[userbId]).toBe(true);
+  expect(json.states[expertId]).toBe(false);
+  expect(json.states[selfId]).toBe(false);
+
+  await apiA.dispose();
+});
+
+test("batched GET /api/follow handles invalid IDs safely and enforces a bounded batch size", async ({ baseURL }) => {
+  const apiA = await playwrightRequest.newContext({ baseURL });
+  await apiA.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+  const userbId = (await (await apiA.get("/api/users/userb")).json()).user._id;
+
+  // Mixed valid/invalid IDs: no crash, invalid one simply absent from the map.
+  const mixedRes = await apiA.get("/api/follow", {
+    params: { targetUserIds: `${userbId},not-a-real-id` },
+  });
+  expect(mixedRes.ok()).toBeTruthy();
+  const mixedJson = await mixedRes.json();
+  expect(typeof mixedJson.states[userbId]).toBe("boolean");
+  expect(mixedJson.states["not-a-real-id"]).toBeUndefined();
+
+  // Over the bounded batch size (20) is rejected outright.
+  const tooMany = Array.from({ length: 21 }, () => userbId).join(",");
+  const overLimitRes = await apiA.get("/api/follow", { params: { targetUserIds: tooMany } });
+  expect(overLimitRes.status()).toBe(400);
+
+  await apiA.dispose();
+});
+
+test("batched GET /api/follow requires authentication", async ({ baseURL }) => {
+  const apiUnauth = await playwrightRequest.newContext({ baseURL });
+  const res = await apiUnauth.get("/api/follow", { params: { targetUserIds: "000000000000000000000000" } });
+  expect(res.status()).toBe(401);
+  await apiUnauth.dispose();
+});
+
+test("existing single-target GET and POST /api/follow behavior is unchanged", async ({ baseURL }) => {
+  const apiA = await playwrightRequest.newContext({ baseURL });
+  await apiA.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+  const userbId = (await (await apiA.get("/api/users/userb")).json()).user._id;
+
+  const beforeJson = await (
+    await apiA.get("/api/follow", { params: { targetUserId: userbId } })
+  ).json();
+  expect(typeof beforeJson.following).toBe("boolean");
+
+  const postRes = await apiA.post("/api/follow", { data: { targetUserId: userbId } });
+  const postJson = await postRes.json();
+  expect(postRes.ok()).toBeTruthy();
+  expect(typeof postJson.following).toBe("boolean");
+
+  const afterJson = await (
+    await apiA.get("/api/follow", { params: { targetUserId: userbId } })
+  ).json();
+  expect(afterJson.following).toBe(postJson.following);
+
+  await apiA.dispose();
+});

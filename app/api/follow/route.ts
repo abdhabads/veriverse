@@ -5,6 +5,11 @@ import User from "@/models/User";
 import { getUserFromRequest } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
+import { isValidObjectId } from "@/lib/validation";
+
+// Aligned with Search's own max People results (app/api/search/route.ts),
+// so a single results page can always be resolved in one request.
+const MAX_BATCH_TARGETS = 20;
 
 export async function GET(req: Request) {
   try {
@@ -14,7 +19,50 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
-    const targetUserId = new URL(req.url).searchParams.get("targetUserId");
+    const searchParams = new URL(req.url).searchParams;
+    const targetUserIdsParam = searchParams.get("targetUserIds");
+
+    // Batched form: ?targetUserIds=id1,id2,... - added for Search's People
+    // results. Entirely separate from, and does not alter, the single-
+    // target form below.
+    if (targetUserIdsParam !== null) {
+      const requestedIds = targetUserIdsParam
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0);
+
+      if (requestedIds.length > MAX_BATCH_TARGETS) {
+        return NextResponse.json(
+          { success: false, message: `Too many target users (max ${MAX_BATCH_TARGETS})` },
+          { status: 400 }
+        );
+      }
+
+      const validIds = requestedIds.filter((id) => isValidObjectId(id));
+      const states: Record<string, boolean> = {};
+
+      const otherIds = validIds.filter((id) => id !== String(user._id));
+      if (otherIds.length > 0) {
+        const follows = await Follow.find({
+          follower: user._id,
+          following: { $in: otherIds },
+        }).select("following");
+        const followingSet = new Set(follows.map((item: any) => String(item.following)));
+        for (const id of otherIds) {
+          states[id] = followingSet.has(id);
+        }
+      }
+
+      // Self is included as false rather than omitted, consistent with the
+      // single-target form's own self behavior below.
+      if (validIds.includes(String(user._id))) {
+        states[String(user._id)] = false;
+      }
+
+      return NextResponse.json({ success: true, states });
+    }
+
+    const targetUserId = searchParams.get("targetUserId");
     if (!targetUserId) {
       return NextResponse.json({ success: false, message: "Target user required" }, { status: 400 });
     }

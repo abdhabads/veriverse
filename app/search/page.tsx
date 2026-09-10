@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import axios from "axios";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -63,6 +63,62 @@ function SearchPageInner() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [message, setMessage] = useState("");
+
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [followState, setFollowState] = useState<Record<string, boolean>>({});
+  const [followBusy, setFollowBusy] = useState<Record<string, boolean>>({});
+  // Guards the follow-state batch fetch against an older response (from a
+  // prior search) overwriting a newer one if the user searches again quickly.
+  const followStateSeqRef = useRef(0);
+
+  useEffect(() => {
+    axios
+      .get("/api/me")
+      .then((res) => setCurrentUserId(res.data?.user?._id || null))
+      .catch(() => setCurrentUserId(null));
+  }, []);
+
+  useEffect(() => {
+    if (!currentUserId || users.length === 0) {
+      setFollowState({});
+      return;
+    }
+
+    const targetIds = users.map((u) => u._id).filter((id) => id !== currentUserId);
+    if (targetIds.length === 0) {
+      setFollowState({});
+      return;
+    }
+
+    const seq = ++followStateSeqRef.current;
+    axios
+      .get("/api/follow", { params: { targetUserIds: targetIds.join(",") } })
+      .then((res) => {
+        if (followStateSeqRef.current !== seq) return;
+        setFollowState(res.data?.states || {});
+      })
+      .catch(() => {
+        if (followStateSeqRef.current !== seq) return;
+        setFollowState({});
+      });
+  }, [users, currentUserId]);
+
+  const toggleFollow = async (targetUserId: string) => {
+    if (followBusy[targetUserId]) return;
+    setFollowBusy((prev) => ({ ...prev, [targetUserId]: true }));
+    try {
+      const res = await axios.post("/api/follow", { targetUserId });
+      setFollowState((prev) => ({ ...prev, [targetUserId]: Boolean(res.data?.following) }));
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        setMessage(error.response?.data?.message || "Failed to update follow status");
+      } else {
+        setMessage("Failed to update follow status");
+      }
+    } finally {
+      setFollowBusy((prev) => ({ ...prev, [targetUserId]: false }));
+    }
+  };
 
   useEffect(() => {
     const q = searchParams.get("q") || "";
@@ -181,34 +237,48 @@ function SearchPageInner() {
             <div className="space-y-3">
               {users.map((user) => (
                 <div key={user._id} className="vv-post-panel">
-                  <div className="flex items-start gap-3">
-                    {user.avatarUrl ? (
-                      <Image
-                        src={user.avatarUrl}
-                        alt={user.username}
-                        width={40}
-                        height={40}
-                        unoptimized
-                        className="h-10 w-10 rounded-full object-cover border"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
-                        {user.username.slice(0, 1).toUpperCase()}
-                      </div>
-                    )}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      {user.avatarUrl ? (
+                        <Image
+                          src={user.avatarUrl}
+                          alt={user.username}
+                          width={40}
+                          height={40}
+                          unoptimized
+                          className="h-10 w-10 rounded-full object-cover border"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
+                          {user.username.slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
 
-                    <div className="min-w-0 flex-1">
-                      <button
-                        onClick={() => router.push(`/u/${user.username}`)}
-                        className="font-semibold vv-link text-sm"
-                      >
-                        {user.username}
-                      </button>
-                      <p className="vv-subtitle mt-1">
-                        Reputation: {user.reputation} • Rewards: {user.rewardPoints}
-                      </p>
-                      {user.bio && <p className="text-sm text-slate-700 mt-3 leading-6">{user.bio}</p>}
+                      <div className="min-w-0 flex-1">
+                        <button
+                          onClick={() => router.push(`/u/${user.username}`)}
+                          className="font-semibold vv-link text-sm"
+                        >
+                          {user.username}
+                        </button>
+                        <p className="vv-subtitle mt-1">
+                          Reputation: {user.reputation} • Rewards: {user.rewardPoints}
+                        </p>
+                        {user.bio && <p className="text-sm text-slate-700 mt-3 leading-6">{user.bio}</p>}
+                      </div>
                     </div>
+
+                    {currentUserId && user._id !== currentUserId && (
+                      <button
+                        type="button"
+                        data-testid={`search-follow-${user.username}`}
+                        onClick={() => toggleFollow(user._id)}
+                        disabled={Boolean(followBusy[user._id])}
+                        className={followState[user._id] ? "vv-btn-secondary" : "vv-btn-primary"}
+                      >
+                        {followState[user._id] ? "Following" : "Follow"}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
