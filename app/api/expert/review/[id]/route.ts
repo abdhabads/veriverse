@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/mongodb";
 import Post from "@/models/Post";
 import RewardLog from "@/models/RewardLog";
 import User from "@/models/User";
-import { getUserFromRequest } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/auth";
 import { calculateBadges } from "@/lib/badges";
 import ReputationLog from "@/models/ReputationLog";
 import AuditLog from "@/models/AuditLog";
@@ -19,9 +19,11 @@ type RouteContext = {
 export async function PATCH(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const expert = await getUserFromRequest(req);
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const expert = guard.user;
 
-    if (!expert || !["expert", "admin"].includes(expert.role)) {
+    if (!["expert", "admin"].includes(expert.role)) {
       return NextResponse.json(
         { success: false, message: "Expert or admin access required" },
         { status: 403 }

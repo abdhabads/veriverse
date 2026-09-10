@@ -1,6 +1,8 @@
 import jwt from "jsonwebtoken";
+import { NextResponse } from "next/server";
 import User from "@/models/User";
 import { connectDB } from "@/lib/mongodb";
+import { fail } from "@/lib/apiResponse";
 
 export type AuthTokenPayload = {
   id: string;
@@ -54,4 +56,52 @@ export async function getUserFromRequest(req: Request) {
   await connectDB();
   const user = await User.findById(userId);
   return user;
+}
+
+// Acting-user authorization for mutation routes: authenticates via the same
+// JWT-verify + fresh-DB-fetch path as getUserFromRequest (no second token
+// decode, no second User query), then rejects a currently-banned,
+// currently-suspended, or deactivated actor. "Warned" accounts and accounts
+// whose suspension has expired (suspendedUntil <= now, even if
+// moderationStatus still reads "suspended" in MongoDB because nothing has
+// lazily normalized it yet) are treated as active. This is a read-only
+// check - it never writes to the User document; only login and /api/access
+// perform that lazy normalization, intentionally.
+export async function requireActiveUser(req: Request): Promise<
+  | { user: NonNullable<Awaited<ReturnType<typeof getUserFromRequest>>>; errorResponse?: undefined }
+  | { user?: undefined; errorResponse: NextResponse }
+> {
+  const user = await getUserFromRequest(req);
+
+  if (!user) {
+    return { errorResponse: fail("Unauthorized", 401) };
+  }
+
+  if (user.isDeactivated) {
+    return {
+      errorResponse: fail(
+        "This account has been deactivated. You can restore it from the login page.",
+        403
+      ),
+    };
+  }
+
+  if (user.moderationStatus === "banned") {
+    return { errorResponse: fail("This account has been banned.", 403) };
+  }
+
+  if (
+    user.moderationStatus === "suspended" &&
+    user.suspendedUntil &&
+    new Date(user.suspendedUntil) > new Date()
+  ) {
+    return {
+      errorResponse: fail(
+        `This account is suspended until ${new Date(user.suspendedUntil).toLocaleString()}.`,
+        403
+      ),
+    };
+  }
+
+  return { user };
 }

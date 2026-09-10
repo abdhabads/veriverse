@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/mongodb";
 import Appeal from "@/models/Appeal";
 import Post from "@/models/Post";
 import User from "@/models/User";
-import { getUserFromRequest } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/auth";
 import AuditLog from "@/models/AuditLog";
 import { setPostTrustStatus } from "@/lib/setPostTrustStatus";
 import { recordTrustEvent } from "@/lib/trustEvents";
@@ -18,9 +18,11 @@ type RouteContext = {
 export async function PATCH(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const admin = await getUserFromRequest(req);
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const admin = guard.user;
 
-    if (!admin || admin.role !== "admin") {
+    if (admin.role !== "admin") {
       return NextResponse.json(
         { success: false, message: "Admin access required" },
         { status: 403 }

@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/mongodb";
-import { getUserFromRequest } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/auth";
 import User from "@/models/User";
 import AuditLog from "@/models/AuditLog";
 import Notification from "@/models/Notification";
@@ -13,9 +13,11 @@ type RouteContext = {
 export async function PATCH(req: Request, context: RouteContext) {
   try {
     await connectDB();
-    const admin = await getUserFromRequest(req);
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const admin = guard.user;
 
-    if (!admin || admin.role !== "admin") {
+    if (admin.role !== "admin") {
       return fail("Admin access required", 403);
     }
 
