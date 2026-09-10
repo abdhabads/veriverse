@@ -166,6 +166,12 @@ export async function PATCH(req: Request, context: RouteContext) {
         },
       });
 
+      // Tracks recipients already notified for this approval event so a
+      // single person (e.g. an appellant appealing their own post) receives
+      // at most one route-level notification, in priority order:
+      // reconciliation > appellant-specific > generic author.
+      const notifiedRecipients = new Set<string>();
+
       if (settlementCheck.shouldApply) {
         const author = await User.findById(post.author);
         if (author) {
@@ -175,6 +181,7 @@ export async function PATCH(req: Request, context: RouteContext) {
             reason: "Appeal approved. Prior trust effects were reconciled.",
             trustEventKey: settlementCheck.eventKey,
           });
+          notifiedRecipients.add(String(post.author));
           await NotificationModel.create({
             user: post.author,
             type: "report_update",
@@ -184,19 +191,25 @@ export async function PATCH(req: Request, context: RouteContext) {
         }
       }
 
-      await NotificationModel.create({
-        user: appeal.appellant,
-        type: "report_update",
-        message: `Your appeal was approved. The post has been moved to ${targetStatus} for re-evaluation.`,
-        referencePost: post._id,
-      });
+      if (!notifiedRecipients.has(String(appeal.appellant))) {
+        notifiedRecipients.add(String(appeal.appellant));
+        await NotificationModel.create({
+          user: appeal.appellant,
+          type: "report_update",
+          message: `Your appeal was approved. The post has been moved to ${targetStatus} for re-evaluation.`,
+          referencePost: post._id,
+        });
+      }
 
-      await NotificationModel.create({
-        user: post.author,
-        type: "report_update",
-        message: `An appeal on your post was approved. The post is now ${targetStatus}.`,
-        referencePost: post._id,
-      });
+      if (!notifiedRecipients.has(String(post.author))) {
+        notifiedRecipients.add(String(post.author));
+        await NotificationModel.create({
+          user: post.author,
+          type: "report_update",
+          message: `An appeal on your post was approved. The post is now ${targetStatus}.`,
+          referencePost: post._id,
+        });
+      }
 
       await AuditLog.create({
         actor: admin._id,

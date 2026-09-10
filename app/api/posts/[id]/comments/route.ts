@@ -101,7 +101,13 @@ export async function POST(req: Request, context: RouteContext) {
       mentions,
     });
 
-    if (String(post.author) !== String(userId)) {
+    // Tracks recipients already notified for this comment/reply event so a
+    // single person (e.g. post author who is also the parent-comment author
+    // or a mentioned user) receives at most one comment_received notification.
+    const notifiedRecipients = new Set<string>([String(userId)]);
+
+    if (!notifiedRecipients.has(String(post.author))) {
+      notifiedRecipients.add(String(post.author));
       await Notification.create({
         user: post.author,
         type: "comment_received",
@@ -112,13 +118,13 @@ export async function POST(req: Request, context: RouteContext) {
 
     if (parentComment) {
       const parent = await Comment.findById(parentComment).populate("author", "username");
-      if (
-        parent &&
-        parent.author &&
-        String((parent.author as any)._id || parent.author) !== String(userId)
-      ) {
+      const parentAuthorId = parent?.author
+        ? String((parent.author as any)._id || parent.author)
+        : null;
+      if (parentAuthorId && !notifiedRecipients.has(parentAuthorId)) {
+        notifiedRecipients.add(parentAuthorId);
         await Notification.create({
-          user: (parent.author as any)._id || parent.author,
+          user: parentAuthorId,
           type: "comment_received",
           message: `${user.username} replied to your comment.`,
           referencePost: post._id,
@@ -131,7 +137,9 @@ export async function POST(req: Request, context: RouteContext) {
     });
 
     for (const mentionedUser of mentionedUsers) {
-      if (String(mentionedUser._id) !== String(userId)) {
+      const mentionedId = String(mentionedUser._id);
+      if (!notifiedRecipients.has(mentionedId)) {
+        notifiedRecipients.add(mentionedId);
         await Notification.create({
           user: mentionedUser._id,
           type: "comment_received",

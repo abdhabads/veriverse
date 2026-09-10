@@ -17,6 +17,8 @@ const NotificationSchema = new Schema(
         "comment_received",
         "report_update",
         "message_received",
+        "new_follower",
+        "repost_received",
       ],
       required: true,
     },

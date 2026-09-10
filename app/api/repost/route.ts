@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Repost from "@/models/Repost";
 import Post from "@/models/Post";
+import Notification from "@/models/Notification";
 import { getUserFromRequest } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
@@ -34,7 +35,22 @@ export async function POST(req: Request) {
     }
 
     await Repost.create({ user: user._id, post: postId });
-    await Post.findByIdAndUpdate(postId, { $inc: { repostsCount: 1 } });
+    const post = await Post.findByIdAndUpdate(postId, { $inc: { repostsCount: 1 } });
+
+    if (post && String(post.author) !== String(user._id)) {
+      try {
+        await Notification.create({
+          user: post.author,
+          type: "repost_received",
+          message: `${user.username} reposted your post.`,
+          referencePost: post._id,
+        });
+      } catch (notifyError) {
+        // The repost itself already succeeded - a failed notification must
+        // not turn a successful repost into an apparent failure.
+        console.error("Failed to create repost notification:", notifyError);
+      }
+    }
 
     return NextResponse.json({ success: true, reposted: true });
   } catch (error) {

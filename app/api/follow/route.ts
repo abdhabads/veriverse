@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Follow from "@/models/Follow";
 import User from "@/models/User";
+import Notification from "@/models/Notification";
 import { getUserFromRequest } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
@@ -146,6 +147,18 @@ export async function POST(req: Request) {
       follower: user._id,
       following: targetUserId,
     });
+
+    try {
+      await Notification.create({
+        user: targetUserId,
+        type: "new_follower",
+        message: `${user.username} started following you.`,
+      });
+    } catch (notifyError) {
+      // The follow itself already succeeded - a failed notification must
+      // not turn a successful follow into an apparent failure.
+      console.error("Failed to create new-follower notification:", notifyError);
+    }
 
     return NextResponse.json({
       success: true,

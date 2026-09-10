@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Post from "@/models/Post";
-import Notification from "@/models/Notification";
 import RewardLog from "@/models/RewardLog";
 import User from "@/models/User";
 import { getUserFromRequest } from "@/lib/auth";
@@ -118,18 +117,6 @@ export async function PATCH(req: Request, context: RouteContext) {
       author,
       evaluation,
       trustEventKey: settlementCheck.eventKey,
-    });
-
-    await Notification.create({
-      user: author._id,
-      type: evaluation.finalStatus === "verified" ? "post_verified" : "post_flagged",
-      message:
-        evaluation.finalStatus === "verified"
-          ? "Your post has been verified after expert review."
-          : evaluation.finalStatus === "false"
-          ? "Your post has been marked false after expert review."
-          : "Your post has been marked disputed after expert review.",
-      referencePost: post._id,
     });
 
     let auditActionType: "expert_verified" | "expert_false" | "expert_disputed" =

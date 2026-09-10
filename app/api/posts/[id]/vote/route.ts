@@ -6,7 +6,6 @@ import Vote from "@/models/Vote";
 import User from "@/models/User";
 import RewardLog from "@/models/RewardLog";
 import ReputationLog from "@/models/ReputationLog";
-import Notification from "@/models/Notification";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { calculateBadges } from "@/lib/badges";
 import { getVotingWeight } from "@/lib/votingWeight";
@@ -223,18 +222,6 @@ export async function POST(req: Request, context: RouteContext) {
       author,
       evaluation,
       trustEventKey: settlementCheck.eventKey,
-    });
-
-    await Notification.create({
-      user: author._id,
-      type: evaluation.finalStatus === "verified" ? "post_verified" : "post_flagged",
-      message:
-        evaluation.finalStatus === "verified"
-          ? "Your post has been verified by community review."
-          : evaluation.finalStatus === "false"
-          ? "Your post has been marked false after community review."
-          : "Your post has been marked disputed after community review.",
-      referencePost: post._id,
     });
 
     return NextResponse.json({
