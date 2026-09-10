@@ -9,7 +9,7 @@ const AuditLogSchema = new Schema(
     },
     actorRole: {
       type: String,
-      enum: ["admin", "expert"],
+      enum: ["user", "admin", "expert"],
       required: true,
     },
     actionType: {
@@ -28,6 +28,7 @@ const AuditLogSchema = new Schema(
         "admin_user_reactivated",
         "admin_user_adjustment",
         "admin_role_assigned",
+        "account_self_deleted",
       ],
       required: true,
     },
