@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import ReputationLog from "@/models/ReputationLog";
 import User from "@/models/User";
+// Registers the "Post" model for Mongoose so .populate("referencePost", ...)
+// below can resolve it - this route never queries Post directly, but the
+// import's registration side effect is required.
+import Post from "@/models/Post";
 import { getUserFromRequest } from "@/lib/auth";
 
 export async function GET(req: Request) {

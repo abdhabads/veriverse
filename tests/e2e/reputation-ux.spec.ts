@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import User from "@/models/User";
+import Post from "@/models/Post";
+import ReputationLog from "@/models/ReputationLog";
 import { login } from "./helpers";
 
 dotenv.config({ path: ".env.test.local" });
@@ -148,4 +150,49 @@ test("ReputationInfo disclosure renders the reputation/claim-truth distinction, 
   await page.goto("/leaderboard");
   const leaderboardBodyText = await page.evaluate(() => document.body.innerText.toLowerCase());
   expect(leaderboardBodyText).not.toContain("trust score");
+});
+
+test("GET /api/reputation succeeds and returns a populated referencePost when a real ReputationLog exists", async ({ baseURL }) => {
+  const api = await playwrightRequest.newContext({ baseURL });
+  const loginRes = await api.post("/api/login", {
+    data: { email: "usera@test.com", password: "Password123!" },
+  });
+  const userAId = (await loginRes.json()).user._id;
+
+  const uri = process.env.MONGO_URI!;
+  await mongoose.connect(uri);
+  const post = await Post.create({
+    author: userAId,
+    content: "A finalized claim referenced by a reputation log entry.",
+    status: "verified",
+    aiLabel: "safe",
+  });
+  await ReputationLog.create({
+    user: userAId,
+    actionType: "accurate_post",
+    pointsChange: 5,
+    reason: "Community finalized your post as verified.",
+    referencePost: post._id,
+    trustDecisionVersion: 1,
+  });
+  await mongoose.disconnect();
+
+  // This is exactly the condition that previously 500'd: a real
+  // ReputationLog document whose referencePost is non-null, requiring
+  // Mongoose to resolve the "Post" model during .populate().
+  const res = await api.get("/api/reputation");
+  expect(res.status()).toBe(200);
+
+  const json = await res.json();
+  expect(json.success).toBe(true);
+
+  const matchingLog = json.logs.find(
+    (log: any) => String(log.referencePost?._id) === String(post._id)
+  );
+  expect(matchingLog).toBeTruthy();
+  expect(matchingLog.referencePost.content).toBe(
+    "A finalized claim referenced by a reputation log entry."
+  );
+
+  await api.dispose();
 });
