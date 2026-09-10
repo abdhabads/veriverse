@@ -52,6 +52,10 @@ export async function PATCH(req: Request, context: RouteContext) {
       return fail("You cannot moderate your own account", 400);
     }
 
+    if (targetUser.role === "admin") {
+      return fail("You cannot modify another admin through this route", 403);
+    }
+
     if (action === "set_role") {
       if (!["user", "expert", "admin"].includes(role)) {
         return fail("Invalid role", 400);
@@ -83,10 +87,6 @@ export async function PATCH(req: Request, context: RouteContext) {
           role: targetUser.role,
         },
       });
-    }
-
-    if (targetUser.role === "admin") {
-      return fail("You cannot modify another admin through this route", 403);
     }
 
     if (!["warn", "suspend", "ban", "reactivate"].includes(action)) {
