@@ -84,3 +84,28 @@ test("self does not show a Follow control in Search People results", async ({ pa
   await expect(page.getByRole("button", { name: "usera", exact: true })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId("search-follow-usera")).toHaveCount(0);
 });
+
+test("Search People results have a Message action that opens a conversation, alongside an intact Follow action", async ({ page }) => {
+  await login(page, "usera@test.com", "Password123!");
+  await page.goto(`/search?q=${TARGET_USERNAME}&type=users`);
+
+  const followButton = page.getByTestId(`search-follow-${TARGET_USERNAME}`);
+  await expect(followButton).toBeVisible({ timeout: 10_000 });
+  await expect(followButton).toHaveText("Follow");
+
+  const messageButton = page.getByTestId(`search-message-${TARGET_USERNAME}`);
+  await expect(messageButton).toBeVisible({ timeout: 10_000 });
+
+  await Promise.all([
+    page.waitForURL(/\/messages\/.+/, { timeout: 10_000 }),
+    messageButton.click(),
+  ]);
+
+  await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 10_000 });
+
+  // Follow is unaffected by the Message action having been used.
+  await page.goto(`/search?q=${TARGET_USERNAME}&type=users`);
+  const followButtonAfter = page.getByTestId(`search-follow-${TARGET_USERNAME}`);
+  await expect(followButtonAfter).toBeVisible({ timeout: 10_000 });
+  await expect(followButtonAfter).toHaveText("Follow");
+});

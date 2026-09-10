@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/mongodb";
 import Conversation from "@/models/Conversation";
 import Message from "@/models/Message";
 import User from "@/models/User";
+import Notification from "@/models/Notification";
 import { getUserFromRequest } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
@@ -194,6 +195,19 @@ export async function POST(req: Request, context: RouteContext) {
       { _id: id, "participantState.user": user._id },
       { $set: { "participantState.$.lastReadAt": now } }
     );
+
+    try {
+      await Notification.create({
+        user: recipientId,
+        type: "message_received",
+        message: `You received a new message from ${user.username}`,
+        referenceConversation: id,
+      });
+    } catch (notifyError) {
+      // The message itself already succeeded - a failed notification
+      // shouldn't turn a successful send into an error response.
+      console.error("Failed to create message-received notification:", notifyError);
+    }
 
     return NextResponse.json(
       {

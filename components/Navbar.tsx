@@ -14,25 +14,35 @@ export default function Navbar() {
   const [role, setRole] = useState<Role>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   useEffect(() => {
     const run = async () => {
       try {
-        const [userRes, notificationsRes] = await Promise.all([
+        const [userRes, notificationsRes, messagesRes] = await Promise.all([
           api.get("/me"),
           api.get("/notifications"),
+          api.get("/messages/conversations"),
         ]);
 
         setRole(userRes.data.user?.role || "user");
         setUnreadNotifications(Number(notificationsRes.data?.unreadCount || 0));
+        setUnreadMessages(Number(messagesRes.data?.unreadCount || 0));
       } catch {
         setRole("user");
         setUnreadNotifications(0);
+        setUnreadMessages(0);
       }
     };
 
     void run();
   }, []);
+
+  const badgeCountFor = (path: string) => {
+    if (path === "/notifications") return unreadNotifications;
+    if (path === "/messages") return unreadMessages;
+    return 0;
+  };
 
   const primaryLinks = [
     { label: "Feed", path: "/feed" },
@@ -105,9 +115,9 @@ export default function Navbar() {
             {secondaryLinks.map((link) => (
               <button key={link.path} onClick={() => go(link.path)} className="vv-btn-nav">
                 {link.label}
-                {link.path === "/notifications" && unreadNotifications > 0 ? (
+                {badgeCountFor(link.path) > 0 ? (
                   <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-veriverse-purple px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                    {badgeCountFor(link.path) > 99 ? "99+" : badgeCountFor(link.path)}
                   </span>
                 ) : null}
               </button>
@@ -138,9 +148,9 @@ export default function Navbar() {
             {secondaryLinks.map((link) => (
               <button key={link.path} onClick={() => go(link.path)} className="vv-btn-nav">
                 {link.label}
-                {link.path === "/notifications" && unreadNotifications > 0 ? (
+                {badgeCountFor(link.path) > 0 ? (
                   <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-veriverse-purple px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                    {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                    {badgeCountFor(link.path) > 99 ? "99+" : badgeCountFor(link.path)}
                   </span>
                 ) : null}
               </button>

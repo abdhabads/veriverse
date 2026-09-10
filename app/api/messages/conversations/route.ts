@@ -41,6 +41,12 @@ export async function GET(req: Request) {
         (state: any) => String(state.user) === String(user._id)
       );
 
+      const lastReadAt = myState?.lastReadAt || null;
+      const isUnread = Boolean(
+        conversation.lastMessageAt &&
+          (!lastReadAt || new Date(lastReadAt) < new Date(conversation.lastMessageAt))
+      );
+
       return {
         _id: conversation._id,
         counterpart: counterpart
@@ -53,11 +59,17 @@ export async function GET(req: Request) {
           : null,
         lastMessageAt: conversation.lastMessageAt,
         lastMessagePreview: conversation.lastMessagePreview || "",
-        lastReadAt: myState?.lastReadAt || null,
+        lastReadAt,
+        isUnread,
       };
     });
 
-    const res = NextResponse.json({ success: true, conversations: shaped });
+    // Bounded to the same page of conversations already fetched above,
+    // matching the existing Notification unreadCount convention (computed
+    // over its own bounded limit(30) rather than a separate full count).
+    const unreadCount = shaped.filter((conversation) => conversation.isUnread).length;
+
+    const res = NextResponse.json({ success: true, conversations: shaped, unreadCount });
     res.headers.set("Cache-Control", "private, no-store");
     return res;
   } catch (error) {

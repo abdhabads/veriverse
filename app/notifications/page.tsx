@@ -17,6 +17,7 @@ type Notification = {
   isRead: boolean;
   createdAt: string;
   referencePost?: string | null;
+  referenceConversation?: string | null;
 };
 
 export default function NotificationsPage() {
@@ -122,6 +123,15 @@ export default function NotificationsPage() {
                     className="vv-btn-secondary"
                   >
                     Open Post
+                  </button>
+                ) : null}
+
+                {item.referenceConversation ? (
+                  <button
+                    onClick={() => router.push(`/messages/${item.referenceConversation}`)}
+                    className="vv-btn-secondary"
+                  >
+                    Open Conversation
                   </button>
                 ) : null}
               </div>

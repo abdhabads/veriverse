@@ -16,6 +16,7 @@ const NotificationSchema = new Schema(
         "vote_penalty",
         "comment_received",
         "report_update",
+        "message_received",
       ],
       required: true,
     },
@@ -32,6 +33,11 @@ const NotificationSchema = new Schema(
     referencePost: {
       type: Schema.Types.ObjectId,
       ref: "Post",
+      default: null,
+    },
+    referenceConversation: {
+      type: Schema.Types.ObjectId,
+      ref: "Conversation",
       default: null,
     },
   },

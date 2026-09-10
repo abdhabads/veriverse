@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import PageWrapper from "@/components/PageWrapper";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -9,6 +9,8 @@ import Toast from "@/components/Toast";
 import { usePageState } from "@/hooks/usePageState";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { api, getErrorMessage } from "@/lib/apiClient";
+
+const POLL_INTERVAL_MS = 30_000;
 
 type Conversation = {
   _id: string;
@@ -21,34 +23,55 @@ type Conversation = {
   lastMessageAt: string | null;
   lastMessagePreview: string;
   lastReadAt: string | null;
+  isUnread: boolean;
 };
 
 export default function MessagesPage() {
   const router = useRouter();
   const { loading, setLoading, message, messageType, showError, clearMessage } = usePageState();
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const fetchingRef = useRef(false);
 
-  const fetchConversations = useCallback(async () => {
-    try {
-      setLoading(true);
-      clearMessage();
+  const fetchConversations = useCallback(
+    async (silent: boolean) => {
+      if (fetchingRef.current) return;
+      fetchingRef.current = true;
 
-      const user = await requireAuthenticated(router);
-      if (!user) {
-        return;
+      try {
+        if (!silent) {
+          setLoading(true);
+          clearMessage();
+
+          const user = await requireAuthenticated(router);
+          if (!user) {
+            return;
+          }
+        }
+
+        const res = await api.get("/messages/conversations");
+        setConversations(res.data.conversations || []);
+      } catch (error: any) {
+        if (!silent) {
+          showError(getErrorMessage(error, "Failed to load conversations"));
+        }
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+        fetchingRef.current = false;
       }
-
-      const res = await api.get("/messages/conversations");
-      setConversations(res.data.conversations || []);
-    } catch (error: any) {
-      showError(getErrorMessage(error, "Failed to load conversations"));
-    } finally {
-      setLoading(false);
-    }
-  }, [clearMessage, router, setLoading, showError]);
+    },
+    [clearMessage, router, setLoading, showError]
+  );
 
   useEffect(() => {
-    void fetchConversations();
+    void fetchConversations(false);
+
+    const intervalId = setInterval(() => {
+      void fetchConversations(true);
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
   }, [fetchConversations]);
 
   return (
@@ -73,9 +96,19 @@ export default function MessagesPage() {
                 key={conversation._id}
                 type="button"
                 data-testid={`conversation-${conversation.counterpart?.username || conversation._id}`}
+                data-unread={conversation.isUnread ? "true" : "false"}
                 onClick={() => router.push(`/messages/${conversation._id}`)}
-                className="vv-post-panel w-full text-left flex items-center gap-3"
+                className={`vv-post-panel w-full text-left flex items-center gap-3 ${
+                  conversation.isUnread ? "border-veriverse-purple/50" : ""
+                }`}
               >
+                {conversation.isUnread && (
+                  <span
+                    aria-label="Unread"
+                    className="h-2.5 w-2.5 shrink-0 rounded-full bg-veriverse-purple"
+                  />
+                )}
+
                 {conversation.counterpart?.avatarUrl ? (
                   <img
                     src={conversation.counterpart.avatarUrl}
@@ -89,10 +122,14 @@ export default function MessagesPage() {
                 )}
 
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-sm">
+                  <p className={`text-sm ${conversation.isUnread ? "font-bold" : "font-semibold"}`}>
                     {conversation.counterpart?.username || "Unknown user"}
                   </p>
-                  <p className="text-sm text-slate-500 truncate">
+                  <p
+                    className={`text-sm truncate ${
+                      conversation.isUnread ? "text-slate-800 font-medium" : "text-slate-500"
+                    }`}
+                  >
                     {conversation.lastMessagePreview || "No messages yet"}
                   </p>
                 </div>

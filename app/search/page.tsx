@@ -67,6 +67,7 @@ function SearchPageInner() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [followState, setFollowState] = useState<Record<string, boolean>>({});
   const [followBusy, setFollowBusy] = useState<Record<string, boolean>>({});
+  const [messageBusy, setMessageBusy] = useState<Record<string, boolean>>({});
   // Guards the follow-state batch fetch against an older response (from a
   // prior search) overwriting a newer one if the user searches again quickly.
   const followStateSeqRef = useRef(0);
@@ -117,6 +118,22 @@ function SearchPageInner() {
       }
     } finally {
       setFollowBusy((prev) => ({ ...prev, [targetUserId]: false }));
+    }
+  };
+
+  const openConversation = async (targetUserId: string) => {
+    if (messageBusy[targetUserId]) return;
+    setMessageBusy((prev) => ({ ...prev, [targetUserId]: true }));
+    try {
+      const res = await axios.post("/api/messages/conversations", { targetUserId });
+      router.push(`/messages/${res.data.conversation._id}`);
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        setMessage(error.response?.data?.message || "Failed to start conversation");
+      } else {
+        setMessage("Failed to start conversation");
+      }
+      setMessageBusy((prev) => ({ ...prev, [targetUserId]: false }));
     }
   };
 
@@ -269,15 +286,26 @@ function SearchPageInner() {
                     </div>
 
                     {currentUserId && user._id !== currentUserId && (
-                      <button
-                        type="button"
-                        data-testid={`search-follow-${user.username}`}
-                        onClick={() => toggleFollow(user._id)}
-                        disabled={Boolean(followBusy[user._id])}
-                        className={followState[user._id] ? "vv-btn-secondary" : "vv-btn-primary"}
-                      >
-                        {followState[user._id] ? "Following" : "Follow"}
-                      </button>
+                      <div className="flex flex-col items-end gap-2">
+                        <button
+                          type="button"
+                          data-testid={`search-follow-${user.username}`}
+                          onClick={() => toggleFollow(user._id)}
+                          disabled={Boolean(followBusy[user._id])}
+                          className={followState[user._id] ? "vv-btn-secondary" : "vv-btn-primary"}
+                        >
+                          {followState[user._id] ? "Following" : "Follow"}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`search-message-${user.username}`}
+                          onClick={() => openConversation(user._id)}
+                          disabled={Boolean(messageBusy[user._id])}
+                          className="vv-btn-secondary"
+                        >
+                          {messageBusy[user._id] ? "Opening..." : "Message"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

@@ -9,6 +9,8 @@ import { usePageState } from "@/hooks/usePageState";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { api, getErrorMessage } from "@/lib/apiClient";
 
+const POLL_INTERVAL_MS = 12_000;
+
 type MessageItem = {
   _id: string;
   sender: string;
@@ -36,6 +38,7 @@ export default function ConversationPage({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const conversationIdRef = useRef<string>("");
+  const fetchingRef = useRef(false);
 
   const fetchConversation = useCallback(async () => {
     try {
@@ -61,9 +64,32 @@ export default function ConversationPage({
     }
   }, [clearMessage, params, router, setLoading, showError]);
 
+  const refreshMessages = useCallback(async () => {
+    if (!conversationIdRef.current || fetchingRef.current) return;
+    fetchingRef.current = true;
+
+    try {
+      const res = await api.get(`/messages/conversations/${conversationIdRef.current}`);
+      setCounterpart(res.data.counterpart || null);
+      setMessages(res.data.messages || []);
+    } catch {
+      // Silent - a failed background refresh shouldn't disrupt an open conversation.
+    } finally {
+      fetchingRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
     void fetchConversation();
   }, [fetchConversation]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      void refreshMessages();
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [refreshMessages]);
 
   const sendMessage = async () => {
     const content = draft.trim();
