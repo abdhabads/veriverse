@@ -87,6 +87,9 @@ export default function PostDetailPage({
 
   const [shareFeedback, setShareFeedback] = useState("");
 
+  const [reportReason, setReportReason] = useState("other");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+
   const handleShare = async () => {
     if (!post) return;
     setShareFeedback("");
@@ -149,6 +152,30 @@ export default function PostDetailPage({
       setMessage("Comment posted");
     } catch (error: unknown) {
       setMessage(getErrorMessage(error, "Failed to add comment"));
+    }
+  }
+
+  async function submitReport() {
+    if (!post || reportSubmitting) return;
+
+    setReportSubmitting(true);
+
+    try {
+      const res = await axios.post(
+        "/api/reports",
+        { postId: post._id, reason: reportReason },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setMessage(res.data.message || "Report submitted.");
+    } catch (error: unknown) {
+      setMessage(getErrorMessage(error, "Failed to submit report"));
+    } finally {
+      setReportSubmitting(false);
     }
   }
 
@@ -400,6 +427,32 @@ export default function PostDetailPage({
             Trust Version: {post.trustDecisionVersion} • State: {post.trustEvaluationState}
           </div>
           <p className="mb-4">{post.content}</p>
+
+          {currentUser && currentUser.id !== post.author?._id && (
+            <div className="vv-post-panel mb-4">
+              <p className="text-xs text-slate-500 mb-2 uppercase tracking-[0.18em]">Report This Post</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className="vv-select"
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                >
+                  <option value="misinformation">Misinformation</option>
+                  <option value="spam">Spam</option>
+                  <option value="abuse">Abuse</option>
+                  <option value="other">Other</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={submitReport}
+                  disabled={reportSubmitting}
+                  className="vv-btn-danger"
+                >
+                  {reportSubmitting ? "Reporting..." : "Report"}
+                </button>
+              </div>
+            </div>
+          )}
 
           {(post.hashtags || []).length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4">

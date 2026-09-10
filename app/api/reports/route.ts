@@ -1,7 +1,7 @@
 import { connectDB } from "@/lib/mongodb";
 import Report from "@/models/Report";
 import Post from "@/models/Post";
-import { getUserFromRequest } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
 import { cleanOptionalString, cleanString, isValidObjectId } from "@/lib/validation";
@@ -12,8 +12,9 @@ const allowedReasons = ["misinformation", "spam", "abuse", "other"];
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
-    if (!user) return fail("Unauthorized", 401);
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
     const limitResponse = enforceRateLimit({
       key: getRateLimitKey(req, "report", String(user._id)),
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
     const post = await Post.findById(postId);
     if (!post) return fail("Post not found", 404);
 
+    if (String(post.author) === String(user._id)) {
+      return fail("You cannot report your own post", 400);
+    }
+
     const existing = await Report.findOne({
       reporter: user._id,
       post: postId,
@@ -49,12 +54,20 @@ export async function POST(req: Request) {
       return fail("You already reported this post", 409);
     }
 
-    const report = await Report.create({
-      reporter: user._id,
-      post: postId,
-      reason,
-      note,
-    });
+    let report;
+    try {
+      report = await Report.create({
+        reporter: user._id,
+        post: postId,
+        reason,
+        note,
+      });
+    } catch (createError: any) {
+      if (createError?.code === 11000) {
+        return fail("You already reported this post", 409);
+      }
+      throw createError;
+    }
 
     return ok({
       message: "Report submitted successfully",
