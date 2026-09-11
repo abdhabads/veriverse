@@ -14,6 +14,7 @@ import FollowButton from "@/components/FollowButton";
 import PostCard, { type Post as PostCardPost } from "@/components/PostCard";
 import { api, getErrorMessage } from "@/lib/apiClient";
 import { fetchMySafetyRelations, toggleSafetyRelation } from "@/lib/profileTrustClient";
+import { useStartConversation } from "@/hooks/useStartConversation";
 
 const BLOCK_CONFIRM_MESSAGE =
   "Block this user? Their posts will be hidden from your feed, any Follow relationship between you will be removed, and you won't be able to message, comment/reply, or repost each other's posts. Unblocking later won't restore the Follow relationship.";
@@ -50,6 +51,7 @@ export default function PublicProfilePage({
   params: Promise<{ username: string }>;
 }) {
   const router = useRouter();
+  const startConversation = useStartConversation();
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,11 +140,9 @@ export default function PublicProfilePage({
   const openConversation = async () => {
     if (!user || messageBusy) return;
     setMessageBusy(true);
-    try {
-      const res = await api.post("/messages/conversations", { targetUserId: user._id });
-      router.push(`/messages/${res.data.conversation._id}`);
-    } catch (error: any) {
-      setMessage(getErrorMessage(error, "Failed to start conversation"));
+    const errorMessage = await startConversation(user._id);
+    if (errorMessage) {
+      setMessage(errorMessage);
       setMessageBusy(false);
     }
   };

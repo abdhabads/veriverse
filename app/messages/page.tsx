@@ -6,6 +6,7 @@ import PageWrapper from "@/components/PageWrapper";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
+import ConversationListItem from "@/components/ConversationListItem";
 import { usePageState } from "@/hooks/usePageState";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { api, getErrorMessage } from "@/lib/apiClient";
@@ -92,54 +93,16 @@ export default function MessagesPage() {
         <div className="vv-card p-4 sm:p-5">
           <div className="space-y-3">
             {conversations.map((conversation) => (
-              <button
+              <ConversationListItem
                 key={conversation._id}
-                type="button"
-                data-testid={`conversation-${conversation.counterpart?.username || conversation._id}`}
-                data-unread={conversation.isUnread ? "true" : "false"}
+                testId={`conversation-${conversation.counterpart?.username || conversation._id}`}
+                username={conversation.counterpart?.username || "Unknown user"}
+                avatarUrl={conversation.counterpart?.avatarUrl}
+                lastMessagePreview={conversation.lastMessagePreview}
+                lastMessageAt={conversation.lastMessageAt}
+                isUnread={conversation.isUnread}
                 onClick={() => router.push(`/messages/${conversation._id}`)}
-                className={`vv-post-panel w-full text-left flex items-center gap-3 ${
-                  conversation.isUnread ? "border-veriverse-purple/50" : ""
-                }`}
-              >
-                {conversation.isUnread && (
-                  <span
-                    aria-label="Unread"
-                    className="h-2.5 w-2.5 shrink-0 rounded-full bg-veriverse-purple"
-                  />
-                )}
-
-                {conversation.counterpart?.avatarUrl ? (
-                  <img
-                    src={conversation.counterpart.avatarUrl}
-                    alt={conversation.counterpart.username}
-                    className="w-10 h-10 rounded-full object-cover border"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
-                    {(conversation.counterpart?.username || "?").slice(0, 1).toUpperCase()}
-                  </div>
-                )}
-
-                <div className="min-w-0 flex-1">
-                  <p className={`text-sm ${conversation.isUnread ? "font-bold" : "font-semibold"}`}>
-                    {conversation.counterpart?.username || "Unknown user"}
-                  </p>
-                  <p
-                    className={`text-sm truncate ${
-                      conversation.isUnread ? "text-slate-800 font-medium" : "text-slate-500"
-                    }`}
-                  >
-                    {conversation.lastMessagePreview || "No messages yet"}
-                  </p>
-                </div>
-
-                {conversation.lastMessageAt && (
-                  <p className="text-xs text-slate-400 whitespace-nowrap">
-                    {new Date(conversation.lastMessageAt).toLocaleString()}
-                  </p>
-                )}
-              </button>
+              />
             ))}
           </div>
         </div>

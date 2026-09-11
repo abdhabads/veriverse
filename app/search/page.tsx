@@ -9,6 +9,7 @@ import PageWrapper from "@/components/PageWrapper";
 import Toast from "@/components/Toast";
 import FollowButton from "@/components/FollowButton";
 import PostCard, { type Post as PostCardPost, type User as PostCardUser } from "@/components/PostCard";
+import { useStartConversation } from "@/hooks/useStartConversation";
 
 type SearchUser = {
   _id: string;
@@ -28,6 +29,7 @@ export default function SearchPage() {
 function SearchPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const startConversation = useStartConversation();
 
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [type, setType] = useState(searchParams.get("type") || "all");
@@ -82,15 +84,9 @@ function SearchPageInner() {
   const openConversation = async (targetUserId: string) => {
     if (messageBusy[targetUserId]) return;
     setMessageBusy((prev) => ({ ...prev, [targetUserId]: true }));
-    try {
-      const res = await axios.post("/api/messages/conversations", { targetUserId });
-      router.push(`/messages/${res.data.conversation._id}`);
-    } catch (error: unknown) {
-      if (axios.isAxiosError(error)) {
-        setMessage(error.response?.data?.message || "Failed to start conversation");
-      } else {
-        setMessage("Failed to start conversation");
-      }
+    const errorMessage = await startConversation(targetUserId);
+    if (errorMessage) {
+      setMessage(errorMessage);
       setMessageBusy((prev) => ({ ...prev, [targetUserId]: false }));
     }
   };

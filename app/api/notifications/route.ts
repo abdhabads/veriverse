@@ -24,11 +24,13 @@ export async function GET(req: Request) {
       0
     );
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       notifications,
       unreadCount,
     });
+    res.headers.set("Cache-Control", "private, no-store");
+    return res;
   } catch {
     return NextResponse.json(
       { success: false, message: "Failed to fetch notifications" },

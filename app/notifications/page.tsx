@@ -6,6 +6,7 @@ import PageWrapper from "@/components/PageWrapper";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
+import { formatRelativeTime } from "@/components/PostCard";
 import { usePageState } from "@/hooks/usePageState";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { api, getErrorMessage } from "@/lib/apiClient";
@@ -107,20 +108,30 @@ export default function NotificationsPage() {
               className={`vv-card p-4 ${item.isRead ? "" : "border-l-4 border-l-veriverse-purple"}`}
             >
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="mb-1 text-sm font-medium text-veriverse-dark">{item.message}</p>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                    {item.type.replaceAll("_", " ")}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {new Date(item.createdAt).toLocaleString()}
-                  </p>
+                <div className="flex items-start gap-2">
+                  {!item.isRead && (
+                    <span
+                      aria-hidden="true"
+                      className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-veriverse-purple"
+                    />
+                  )}
+                  <div>
+                    <p
+                      className={`mb-1 text-sm text-veriverse-dark ${
+                        item.isRead ? "font-medium" : "font-semibold"
+                      }`}
+                    >
+                      {item.isRead ? item.message : <>{item.message} <span className="sr-only">(unread)</span></>}
+                    </p>
+                    <p className="text-xs text-slate-500">{formatRelativeTime(item.createdAt)}</p>
+                  </div>
                 </div>
 
                 {item.referencePost ? (
                   <button
                     onClick={() => router.push(`/posts/${item.referencePost}`)}
-                    className="vv-btn-secondary"
+                    aria-label={`Open the post referenced by: ${item.message}`}
+                    className="vv-btn-secondary shrink-0"
                   >
                     Open Post
                   </button>
@@ -129,7 +140,8 @@ export default function NotificationsPage() {
                 {item.referenceConversation ? (
                   <button
                     onClick={() => router.push(`/messages/${item.referenceConversation}`)}
-                    className="vv-btn-secondary"
+                    aria-label={`Open the conversation referenced by: ${item.message}`}
+                    className="vv-btn-secondary shrink-0"
                   >
                     Open Conversation
                   </button>
