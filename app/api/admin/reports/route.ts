@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Report from "@/models/Report";
-import { getUserFromRequest } from "@/lib/auth";
+import { requireActiveUser } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
     await connectDB();
-    const user = await getUserFromRequest(req);
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return guard.errorResponse;
+    const user = guard.user;
 
-    if (!user || user.role !== "admin") {
+    if (user.role !== "admin") {
       return NextResponse.json(
         { success: false, message: "Admin access required" },
         { status: 403 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import Report from "@/models/Report";
 import Post from "@/models/Post";
+import Notification from "@/models/Notification";
 import { requireActiveUser } from "@/lib/auth";
 import AuditLog from "@/models/AuditLog";
 import { canTransitionTrustState } from "@/lib/trustTransitions";
@@ -36,6 +37,13 @@ export async function PATCH(req: Request, context: RouteContext) {
       );
     }
 
+    if (report.status !== "pending") {
+      return NextResponse.json(
+        { success: false, message: "This report has already been resolved" },
+        { status: 409 }
+      );
+    }
+
     if (action === "dismiss") {
       report.status = "dismissed";
       await report.save();
@@ -47,6 +55,13 @@ export async function PATCH(req: Request, context: RouteContext) {
         targetReport: report._id,
         targetPost: report.post,
         note: "Admin dismissed a user report.",
+      });
+
+      await Notification.create({
+        user: report.reporter,
+        type: "report_update",
+        message: "Your report was reviewed.",
+        referencePost: report.post,
       });
 
       return NextResponse.json({
@@ -77,6 +92,13 @@ export async function PATCH(req: Request, context: RouteContext) {
         targetReport: report._id,
         targetPost: report.post,
         note: "Admin reviewed a report and flagged the related post.",
+      });
+
+      await Notification.create({
+        user: report.reporter,
+        type: "report_update",
+        message: "Your report was reviewed.",
+        referencePost: report.post,
       });
 
       return NextResponse.json({

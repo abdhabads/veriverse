@@ -42,6 +42,16 @@ export async function fetchAdminQueues(queue = "all") {
   return res.data;
 }
 
+export async function resolveAdminReport(payload: {
+  reportId: string;
+  action: "dismiss" | "flag_post";
+}) {
+  const res = await api.patch(`/admin/reports/${payload.reportId}`, {
+    action: payload.action,
+  });
+  return res.data;
+}
+
 export async function fetchAdminAnalytics() {
   const res = await api.get("/admin/analytics");
   return res.data;

@@ -8,7 +8,7 @@ import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
 import { usePageState } from "@/hooks/usePageState";
 import { useProtectedRolePage } from "@/hooks/useProtectedRolePage";
-import { fetchAdminQueues } from "@/lib/adminClient";
+import { fetchAdminQueues, resolveAdminReport } from "@/lib/adminClient";
 import { getErrorMessage } from "@/lib/apiClient";
 
 type PostItem = {
@@ -72,6 +72,7 @@ function AdminQueuesPageContent() {
     setLoading,
     message,
     messageType,
+    showSuccess,
     showError,
     clearMessage,
   } = usePageState();
@@ -80,6 +81,7 @@ function AdminQueuesPageContent() {
   const [expertReviewPosts, setExpertReviewPosts] = useState<PostItem[]>([]);
   const [reportQueue, setReportQueue] = useState<ReportItem[]>([]);
   const [appealQueue, setAppealQueue] = useState<AppealItem[]>([]);
+  const [resolvingReportIds, setResolvingReportIds] = useState<Record<string, boolean>>({});
 
   const loadQueues = useCallback(async () => {
     try {
@@ -97,6 +99,27 @@ function AdminQueuesPageContent() {
       setLoading(false);
     }
   }, [queueType, setLoading, clearMessage, showError]);
+
+  const resolveReport = useCallback(
+    async (reportId: string, action: "dismiss" | "flag_post") => {
+      setResolvingReportIds((prev) => ({ ...prev, [reportId]: true }));
+
+      try {
+        const data = await resolveAdminReport({ reportId, action });
+        setReportQueue((prev) => prev.filter((report) => report._id !== reportId));
+        showSuccess(data.message || "Report resolved.");
+      } catch (error: any) {
+        showError(getErrorMessage(error, "Failed to resolve report"));
+      } finally {
+        setResolvingReportIds((prev) => {
+          const next = { ...prev };
+          delete next[reportId];
+          return next;
+        });
+      }
+    },
+    [showSuccess, showError]
+  );
 
   useProtectedRolePage("admin", loadQueues);
 
@@ -259,6 +282,20 @@ function AdminQueuesPageContent() {
                             Open Post
                           </button>
                         ) : null}
+                        <button
+                          onClick={() => resolveReport(report._id, "dismiss")}
+                          disabled={Boolean(resolvingReportIds[report._id])}
+                          className="vv-btn-secondary"
+                        >
+                          Dismiss
+                        </button>
+                        <button
+                          onClick={() => resolveReport(report._id, "flag_post")}
+                          disabled={Boolean(resolvingReportIds[report._id])}
+                          className="vv-btn-danger"
+                        >
+                          Flag Post
+                        </button>
                       </div>
                     </div>
                   ))}
