@@ -14,6 +14,8 @@ import UserRelation from "@/models/UserRelation";
 import Appeal from "@/models/Appeal";
 import Report from "@/models/Report";
 import Notification from "@/models/Notification";
+import Conversation from "@/models/Conversation";
+import Message from "@/models/Message";
 import RewardLog from "@/models/RewardLog";
 import ReputationLog from "@/models/ReputationLog";
 import AuditLog from "@/models/AuditLog";
@@ -161,6 +163,25 @@ export async function DELETE(req: Request) {
         AuditLog.deleteMany({ targetPost: { $in: authoredPostIds } }),
       ]);
       await Post.deleteMany({ _id: { $in: authoredPostIds } });
+    }
+
+    // Conversation deletion is a two-party lifecycle event, not tied to
+    // either the "authored post" cascade above or the departing user's own
+    // records below - a conversation contains the surviving participant's
+    // messages too, so it's found by raw participant ObjectId (never
+    // populated - the other participant may already be unavailable) and
+    // torn down as its own unit before either surrounding cascade.
+    const affectedConversations = await Conversation.find({ participants: userId })
+      .select("_id")
+      .lean();
+    const affectedConversationIds = affectedConversations.map((conversation) => conversation._id);
+
+    if (affectedConversationIds.length > 0) {
+      await Promise.all([
+        Message.deleteMany({ conversation: { $in: affectedConversationIds } }),
+        Notification.deleteMany({ referenceConversation: { $in: affectedConversationIds } }),
+      ]);
+      await Conversation.deleteMany({ _id: { $in: affectedConversationIds } });
     }
 
     // Write audit record before cascade - after deletion the user record is gone
