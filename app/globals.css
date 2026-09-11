@@ -226,6 +226,51 @@ h6 {
     color: #9b2f22;
   }
 
+  /* P2.3: Oppose is ordinary claim disagreement, not a safety/destructive
+     action - it must not share .vv-post-action-warn (the orange/red family
+     also used by Block/Report/Delete) the way it did before this phase.
+     Uses --color-opposition, reserved for exactly this by P2.1. */
+  .vv-post-action-oppose {
+    background: linear-gradient(135deg, rgba(58, 90, 120, 0.12), rgba(58, 90, 120, 0.05));
+    border-color: rgba(58, 90, 120, 0.18);
+    color: var(--color-opposition);
+  }
+
+  /* Real destructive/safety actions (Block/Report/Delete) - separate from
+     Oppose above, using --color-danger rather than the old shared warn
+     family so the two are visually distinct, not just conceptually. */
+  .vv-post-menu-item-danger {
+    color: var(--color-danger);
+  }
+
+  .vv-post-action-static {
+    @apply cursor-default;
+    background: transparent;
+  }
+
+  .vv-post-action-static:hover {
+    transform: none;
+    background: transparent;
+    border-color: rgba(20, 32, 51, 0.1);
+  }
+
+  .vv-post-menu-panel {
+    @apply rounded-[20px] border p-2;
+    background: rgba(255, 252, 247, 0.98);
+    border-color: rgba(20, 32, 51, 0.1);
+    box-shadow: var(--shadow-lifted);
+    backdrop-filter: blur(18px);
+  }
+
+  .vv-post-menu-item {
+    @apply flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition;
+    color: #16324f;
+  }
+
+  .vv-post-menu-item:hover {
+    background: rgba(20, 32, 51, 0.06);
+  }
+
   .vv-post-comment-shell {
     @apply rounded-[24px] border p-3 sm:p-4;
     background: rgba(255, 255, 255, 0.58);

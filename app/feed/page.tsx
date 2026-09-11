@@ -9,6 +9,8 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
 import SectionHeader from "@/components/SectionHeader";
+import Button from "@/components/ui/Button";
+import ActionIcon from "@/components/ActionIcons";
 import PostCard, { type Post, type User, type Comment } from "@/components/PostCard";
 import { api, getErrorMessage } from "@/lib/apiClient";
 import { requireAuthenticated } from "@/lib/frontendAccess";
@@ -88,6 +90,7 @@ export default function FeedPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("recent");
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [publishPhase, setPublishPhase] = useState<PublishPhase>("idle");
@@ -642,7 +645,12 @@ export default function FeedPage() {
       subtitle="Discover verified information and contribute to truth."
     >
       <div className="grid lg:grid-cols-[1.08fr_2.35fr] gap-4 sm:gap-6">
-        <div className="space-y-6">
+        {/* Feed-first at tablet/mobile (order-2 = after main column), a real
+            secondary rail only at lg+/desktop (order-1 = back to the left
+            column) - pure CSS order, no JS viewport detection. Profile
+            Snapshot / How VeriVerse Works / Verified Highlights / Trending
+            no longer render ahead of the actual feed below lg. */}
+        <div className="order-2 space-y-6 lg:order-1">
           <div className="vv-card vv-surface-accent p-5">
             <p className="vv-eyebrow mb-3 bg-white/10 text-white">Profile Snapshot</p>
             <h2 className="text-2xl font-bold mb-3 text-white">Your Identity</h2>
@@ -694,17 +702,17 @@ export default function FeedPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
+              {/* P2.3: the second stat here used to be labeled "Trust Level"
+                  but rendered the exact same currentUser.reputation value
+                  already shown above under "Reputation" - a literal
+                  duplicate, not a distinct concept. Removed rather than
+                  replaced with another person-level trust score: claim
+                  trust and user reputation stay separate. */}
               <div className="vv-hero-stat bg-white/10 border-white/12">
                 <p className="text-xs uppercase tracking-[0.2em] text-orange-100/70">Reward Points</p>
                 <p className="text-xl font-bold text-white mt-2">
                   {currentUser?.rewardPoints || 0}
-                </p>
-              </div>
-              <div className="vv-hero-stat bg-white/10 border-white/12">
-                <p className="text-xs uppercase tracking-[0.2em] text-orange-100/70">Trust Level</p>
-                <p className="text-xl font-bold text-white mt-2">
-                  {currentUser?.reputation ?? 0}
                 </p>
               </div>
             </div>
@@ -769,60 +777,45 @@ export default function FeedPage() {
           </div>
         </div>
 
-        <div className="max-w-2xl mx-auto w-full space-y-6 lg:max-w-none">
-            <div className="vv-card p-5">
-              <SectionHeader
-                title="Discovery Filters"
-                subtitle="Refine the stream by text query, trust verdict, or sort order."
-              />
-
-              <div className="flex flex-col gap-3">
-                <input
-                  className="vv-input"
-                  placeholder="Search posts or usernames"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <select
-                    className="vv-select flex-1"
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                  >
-                    <optgroup label="All content">
-                      <option value="all">All posts</option>
-                    </optgroup>
-                    <optgroup label="By verdict">
-                      <option value="well_supported">Well Supported</option>
-                      <option value="contradicted">Contradicted</option>
-                      <option value="weak_evidence">Weak Evidence</option>
-                      <option value="expert_decided">Expert Decided</option>
-                    </optgroup>
-                    <optgroup label="By status">
-                      <option value="unverified">Unverified</option>
-                      <option value="verified">Verified</option>
-                      <option value="disputed">Disputed</option>
-                      <option value="false">False</option>
-                      <option value="flagged">Flagged</option>
-                      <option value="under_expert_review">Expert Review</option>
-                      <option value="under_appeal_review">Appeal Review</option>
-                    </optgroup>
-                  </select>
-
-                  <select
-                    className="vv-select flex-1"
-                    value={sortOrder}
-                    onChange={(e) => setSortOrder(e.target.value)}
-                  >
-                    <option value="recent">Most Recent</option>
-                    <option value="most_endorsed">Most Endorsed</option>
-                    <option value="most_contradicted">Most Contradicted</option>
-                    <option value="highest_verification">Highest Verification</option>
-                    <option value="expert_reviewed">Expert Reviewed First</option>
-                  </select>
-                </div>
-              </div>
+        <div className="order-1 max-w-2xl mx-auto w-full space-y-6 lg:order-2 lg:max-w-none">
+            {/* P2.3 hierarchy: mode -> composer -> posts, with the former
+                "Discovery Filters" card demoted to a disclosable control
+                right above the list it filters, instead of the first thing
+                in the column. Same search/status/sort state and behavior,
+                only the presentation moved. */}
+            <div
+              role="tablist"
+              aria-label="Feed mode"
+              className="flex gap-2 rounded-full border border-veriverse-border bg-white/60 p-1 w-fit"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={feedMode === "discovery"}
+                data-testid="feed-mode-discovery"
+                onClick={() => switchFeedMode("discovery")}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] ${
+                  feedMode === "discovery"
+                    ? "bg-veriverse-dark text-white"
+                    : "text-veriverse-dark/60 hover:text-veriverse-dark"
+                }`}
+              >
+                Discovery
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={feedMode === "following"}
+                data-testid="feed-mode-following"
+                onClick={() => switchFeedMode("following")}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] ${
+                  feedMode === "following"
+                    ? "bg-veriverse-dark text-white"
+                    : "text-veriverse-dark/60 hover:text-veriverse-dark"
+                }`}
+              >
+                Following
+              </button>
             </div>
 
             <div className="vv-card p-5">
@@ -860,55 +853,89 @@ export default function FeedPage() {
                   </p>
                 )}
 
-                <button
+                <Button
                   data-testid="publish-button"
                   onClick={createPost}
-                  disabled={posting || publishPhase !== "idle"}
-                  aria-busy={posting || publishPhase !== "idle"}
-                  aria-disabled={posting || publishPhase !== "idle"}
-                  className="vv-btn-primary"
+                  loading={posting || publishPhase !== "idle"}
+                  variant="primary"
                 >
                   {publishPhase === "idle" ? "Publish Post" : "Posting..."}
-                </button>
+                </Button>
               </div>
             </div>
 
-            <div
-              role="tablist"
-              aria-label="Feed mode"
-              className="flex gap-2 rounded-full border border-veriverse-border bg-white/60 p-1 w-fit"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={feedMode === "discovery"}
-                data-testid="feed-mode-discovery"
-                onClick={() => switchFeedMode("discovery")}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] ${
-                  feedMode === "discovery"
-                    ? "bg-veriverse-dark text-white"
-                    : "text-veriverse-dark/60 hover:text-veriverse-dark"
-                }`}
-              >
-                Discovery
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={feedMode === "following"}
-                data-testid="feed-mode-following"
-                onClick={() => switchFeedMode("following")}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] ${
-                  feedMode === "following"
-                    ? "bg-veriverse-dark text-white"
-                    : "text-veriverse-dark/60 hover:text-veriverse-dark"
-                }`}
-              >
-                Following
-              </button>
-            </div>
-
             {message && <Toast message={message} type={messageType} />}
+
+            <div className="vv-card p-3">
+              <button
+                type="button"
+                onClick={() => setIsFiltersOpen((prev) => !prev)}
+                aria-expanded={isFiltersOpen}
+                aria-controls="discovery-filters-panel"
+                className="flex w-full items-center justify-between gap-3 rounded-2xl px-2 py-2 text-left transition hover:bg-black/[0.03] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
+              >
+                <span className="text-sm font-semibold text-veriverse-dark">
+                  Filters &amp; sort
+                  {(searchTerm || statusFilter !== "all" || sortOrder !== "recent") && (
+                    <span className="ml-2 vv-pill-blue">Active</span>
+                  )}
+                </span>
+                <ActionIcon
+                  name="chevronDown"
+                  className={`text-veriverse-dark/50 transition-transform ${isFiltersOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {isFiltersOpen && (
+                <div id="discovery-filters-panel" className="mt-3 flex flex-col gap-3 px-2 pb-1">
+                  <input
+                    className="vv-input"
+                    placeholder="Search posts or usernames"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <select
+                      className="vv-select flex-1"
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                      <optgroup label="All content">
+                        <option value="all">All posts</option>
+                      </optgroup>
+                      <optgroup label="By verdict">
+                        <option value="well_supported">Well Supported</option>
+                        <option value="contradicted">Contradicted</option>
+                        <option value="weak_evidence">Weak Evidence</option>
+                        <option value="expert_decided">Expert Decided</option>
+                      </optgroup>
+                      <optgroup label="By status">
+                        <option value="unverified">Unverified</option>
+                        <option value="verified">Verified</option>
+                        <option value="disputed">Disputed</option>
+                        <option value="false">False</option>
+                        <option value="flagged">Flagged</option>
+                        <option value="under_expert_review">Expert Review</option>
+                        <option value="under_appeal_review">Appeal Review</option>
+                      </optgroup>
+                    </select>
+
+                    <select
+                      className="vv-select flex-1"
+                      value={sortOrder}
+                      onChange={(e) => setSortOrder(e.target.value)}
+                    >
+                      <option value="recent">Most Recent</option>
+                      <option value="most_endorsed">Most Endorsed</option>
+                      <option value="most_contradicted">Most Contradicted</option>
+                      <option value="highest_verification">Highest Verification</option>
+                      <option value="expert_reviewed">Expert Reviewed First</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {filteredPosts.length === 0 &&
               !pageLoading &&
@@ -951,6 +978,7 @@ export default function FeedPage() {
               {filteredPosts.map((post) => (
                 <PostCard
                   key={post._id}
+                  variant="feed"
                   post={post}
                   currentUser={currentUser}
                   currentUserId={currentUserId}

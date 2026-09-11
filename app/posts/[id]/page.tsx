@@ -5,25 +5,16 @@ import axios from "axios";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import EmptyState from "@/components/EmptyState";
-import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
-import ModerationReasonList from "@/components/ModerationReasonList";
 import PageWrapper from "@/components/PageWrapper";
 import ReputationInfo from "@/components/ReputationInfo";
 import Toast from "@/components/Toast";
-import TrustVerdictBadge from "@/components/TrustVerdictBadge";
-import VerificationBadge from "@/components/VerificationBadge";
+import PostCard, { type Post, type User as Author } from "@/components/PostCard";
 import { getErrorMessage } from "@/lib/apiClient";
-import { getExpertReviewReasons } from "@/lib/expertReview";
-import { getAiLabelTone, getDisplayedAiLabel, shouldShowRawTrustStatus } from "@/lib/trustPresentation";
-import { sharePost } from "@/lib/shareLink";
 
-type Author = {
-  _id: string;
-  username: string;
-  reputation: number;
-  avatarUrl?: string;
-};
-
+// Reuses PostCard's own Post/User types rather than maintaining a second,
+// diverging definition (the previous local type declared status/aiLabel as
+// plain `string`, which is exactly the kind of page-specific looseness this
+// consolidation removes).
 type Comment = {
   _id: string;
   content: string;
@@ -31,40 +22,6 @@ type Comment = {
   parentComment?: string | null;
   isDeleted?: boolean;
   author: Author;
-};
-
-type Post = {
-  _id: string;
-  content: string;
-  status: string;
-  aiLabel: string;
-  accurateVotes: number;
-  inaccurateVotes: number;
-  accurateWeight?: number;
-  inaccurateWeight?: number;
-  finalized: boolean;
-  createdAt: string;
-  author: Author;
-  hashtags?: string[];
-  needsExpertReview?: boolean;
-  expertDecision?: string;
-  aiRiskScore?: number;
-  verificationScore?: number;
-  moderationReasons?: string[];
-  groundingStatus?: "not_checked" | "checked" | "insufficient_evidence";
-  groundingSummary?: string;
-  groundingSources?: Array<{
-    title: string;
-    url: string;
-    domain: string;
-    stance: "supports" | "contradicts" | "context" | "unknown";
-  }>;
-  groundingConfidence?: number;
-  contradictionCount?: number;
-  supportCount?: number;
-  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
-  trustDecisionVersion?: number;
-  trustEvaluationState?: string;
 };
 
 export default function PostDetailPage({
@@ -85,23 +42,8 @@ export default function PostDetailPage({
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState("");
 
-  const [shareFeedback, setShareFeedback] = useState("");
-
   const [reportReason, setReportReason] = useState("other");
   const [reportSubmitting, setReportSubmitting] = useState(false);
-
-  const handleShare = async () => {
-    if (!post) return;
-    setShareFeedback("");
-    const result = await sharePost({
-      postId: post._id,
-      title: "VeriVerse post",
-      text: "Take a look at this post on VeriVerse and see what the evidence says.",
-    });
-
-    if (result.status === "cancelled") return;
-    if (result.message) setShareFeedback(result.message);
-  };
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -152,6 +94,28 @@ export default function PostDetailPage({
       setMessage("Comment posted");
     } catch (error: unknown) {
       setMessage(getErrorMessage(error, "Failed to add comment"));
+    }
+  }
+
+  async function votePost(voteType: "accurate" | "inaccurate") {
+    if (!post) return;
+
+    try {
+      const resolvedParams = await params;
+      const res = await axios.post(
+        `/api/posts/${resolvedParams.id}/vote`,
+        { voteType },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setPost((prev) => (prev ? { ...prev, ...res.data.post } : prev));
+      setMessage(res.data.message || "Vote recorded.");
+    } catch (error: unknown) {
+      setMessage(getErrorMessage(error, "Failed to record vote"));
     }
   }
 
@@ -232,8 +196,6 @@ export default function PostDetailPage({
 
     void run();
   }, [fetchDetail]);
-
-  const displayedAiLabel = post ? getDisplayedAiLabel(post) : "safe";
 
   const renderComments = (parentKey: string = "root", level = 0) => {
     const items = commentsByParent[parentKey] || [];
@@ -380,185 +342,37 @@ export default function PostDetailPage({
       {message && <Toast message={message} type="info" />}
 
       {post ? (
-        <div className="vv-card p-5 sm:p-6 mb-6">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              {post.author?.avatarUrl ? (
-                <Image
-                  src={post.author.avatarUrl}
-                  alt={post.author.username}
-                  width={40}
-                  height={40}
-                  unoptimized
-                  className="w-10 h-10 rounded-full object-cover border"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
-                  {post.author?.username?.slice(0, 1)?.toUpperCase()}
-                </div>
-              )}
-
-              <div>
-                <p className="font-semibold">{post.author?.username}</p>
-                <p className="vv-subtitle">User reputation: {post.author?.reputation}</p>
-                <ReputationInfo className="mt-1" />
-              </div>
-            </div>
-
-            <div className="text-right">
-              <button
-                type="button"
-                data-testid="share-post-detail"
-                onClick={handleShare}
-                className="vv-btn-secondary"
-              >
-                <span aria-hidden="true">🔗</span> Share
-              </button>
-              {shareFeedback && (
-                <p data-testid="share-feedback-detail" className="mt-1 text-xs text-slate-500">
-                  {shareFeedback}
-                </p>
-              )}
-            </div>
+        <div className="mb-6">
+          {/* Author reputation stays page-owned, non-actionable context -
+              PostCard's shared author row doesn't carry this, so it's kept
+              here rather than added to every surface that reuses PostCard. */}
+          <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
+            <span>User reputation: {post.author?.reputation}</span>
+            <ReputationInfo />
           </div>
-
-
-          <div className="text-xs text-slate-500 mb-2">
-            Trust Version: {post.trustDecisionVersion} • State: {post.trustEvaluationState}
-          </div>
-          <p className="mb-4">{post.content}</p>
-
-          {currentUser && currentUser.id !== post.author?._id && (
-            <div className="vv-post-panel mb-4">
-              <p className="text-xs text-slate-500 mb-2 uppercase tracking-[0.18em]">Report This Post</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  className="vv-select"
-                  value={reportReason}
-                  onChange={(e) => setReportReason(e.target.value)}
-                >
-                  <option value="misinformation">Misinformation</option>
-                  <option value="spam">Spam</option>
-                  <option value="abuse">Abuse</option>
-                  <option value="other">Other</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={submitReport}
-                  disabled={reportSubmitting}
-                  className="vv-btn-danger"
-                >
-                  {reportSubmitting ? "Reporting..." : "Report"}
-                </button>
-              </div>
-            </div>
-          )}
 
           {(post.hashtags || []).length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-4">
+            <div className="mb-3 flex flex-wrap gap-2">
               {(post.hashtags || []).map((tag) => (
-                <button
-                  key={tag}
-                  onClick={() => router.push(`/topics/${tag}`)}
-                  className="vv-pill-blue"
-                >
+                <button key={tag} onClick={() => router.push(`/topics/${tag}`)} className="vv-pill-blue">
                   #{tag}
                 </button>
               ))}
             </div>
           )}
 
-          <div className="vv-post-stat-grid">
-            <div className="vv-post-panel">
-              <p className="text-xs text-slate-500 mb-2 uppercase tracking-[0.18em]">Decision State</p>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {shouldShowRawTrustStatus(post.status) && <span className="vv-pill-gray">{post.status}</span>}
-
-                {/* Primary trust verdict - synthesis of expert decision, evidence, and status */}
-                <TrustVerdictBadge
-                  status={post.status}
-                  expertDecision={post.expertDecision}
-                  verificationScore={post.verificationScore}
-                  contradictionCount={post.contradictionCount}
-                  groundingSources={post.groundingSources}
-                  contentType={post.contentType}
-                />
-
-                {/* Secondary - moderation risk label, kept visually subordinate */}
-                <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(displayedAiLabel)}`}>
-                  AI: {displayedAiLabel.replaceAll("_", " ")}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <span className="text-xs text-slate-500">Evidence strength:</span>
-                <VerificationBadge score={post.verificationScore} showScore={true} />
-              </div>
-              <p className="text-sm text-slate-700">Risk Score: {Number(post.aiRiskScore || 0)}</p>
-              <p className="text-sm text-slate-700 mt-1">
-                {post.finalized ? "Finalized" : "Open for voting"}
-              </p>
-            </div>
-
-            <div className="vv-post-panel-accent">
-              <p className="text-xs text-slate-500 mb-2 uppercase tracking-[0.18em]">Review Context</p>
-              <p className="text-sm text-slate-700">Accurate Votes: {post.accurateVotes}</p>
-              <p className="text-sm text-slate-700 mt-1">Inaccurate Votes: {post.inaccurateVotes}</p>
-              {post.expertDecision && (
-                <p className="text-sm text-veriverse-purple mt-2">Expert Decision: {post.expertDecision}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_1fr] gap-4">
-            <div className="space-y-4">
-              {Array.isArray(post.moderationReasons) && post.moderationReasons.length > 0 && (
-                <div className="vv-post-panel-accent">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-900 mb-3">
-                    Moderation Signals
-                  </p>
-                  <ModerationReasonList
-                    reasons={post.moderationReasons}
-                    className="mb-0"
-                    sourceLimit={0}
-                  />
-                </div>
-              )}
-
-              {post.needsExpertReview && (
-                <div className="vv-post-panel">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-600 mb-2">
-                    Expert Review Required
-                  </p>
-                  <p className="text-xs text-slate-500 leading-6">
-                    {getExpertReviewReasons(
-                      post.content,
-                      post.hashtags || [],
-                      Number(post.aiRiskScore || 0),
-                      post.groundingStatus || "not_checked",
-                      post.groundingSources || []
-                    ).join("; ") || "Sensitive content requires a human check."}
-                  </p>
-                  {displayedAiLabel === "safe" && (
-                    <p className="text-xs text-slate-500 mt-2 leading-6">
-                      AI safe means the model saw low misinformation risk. Expert review is a separate escalation path for sensitive topics.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <GroundedEvidencePanel
-                groundingStatus={post.groundingStatus}
-                groundingSummary={post.groundingSummary}
-                groundingSources={post.groundingSources}
-                groundingConfidence={post.groundingConfidence}
-                contradictionCount={post.contradictionCount}
-                supportCount={post.supportCount}
-                verificationScore={post.verificationScore}
-              />
-            </div>
-          </div>
+          <PostCard
+            variant="detail"
+            post={post}
+            currentUser={currentUser}
+            currentUserId={currentUser?.id || currentUser?._id}
+            onVote={(_postId, voteType) => votePost(voteType)}
+            onReport={currentUser && currentUser.id !== post.author?._id ? () => submitReport() : undefined}
+            reportReason={reportReason}
+            onReportReasonChange={(_postId, reason) => setReportReason(reason)}
+            comments={comments}
+            onNavigateToProfile={(username) => router.push(`/u/${username}`)}
+          />
         </div>
       ) : null}
 

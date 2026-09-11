@@ -1,19 +1,43 @@
 // components/PostCard.tsx
-// Extracted from the previously monolithic app/feed/page.tsx per-post render
-// block (P0-A). Presentation-only: app/feed/page.tsx remains the owner of
-// feed-level state and API coordination - this component reads slices of
-// that state via props and calls back through the same handler functions
-// that already existed in the parent, unchanged.
+// Shared post presentation (P2.3). Originally extracted from the feed's own
+// per-post render block (P0-A) and used only by app/feed/page.tsx; as of
+// P2.3 it also backs the post-detail page's post header, and the
+// profile-compact post rows on own/public profile - replacing three
+// previously-independent, divergent renderers. `variant` controls which of
+// those three presentations is used; everything else about the ownership
+// model is unchanged - the parent page still owns state/API coordination,
+// this component reads props and calls back through parent-supplied
+// handlers, all now optional so a page only needs to wire up the actions it
+// actually supports.
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
 import TrustSummaryLine from "@/components/TrustSummaryLine";
+import TrustVerdictBadge from "@/components/TrustVerdictBadge";
+import VerificationBadge from "@/components/VerificationBadge";
+import ModerationReasonList from "@/components/ModerationReasonList";
 import ActionIcon from "@/components/ActionIcons";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { sharePost } from "@/lib/shareLink";
+import { getAiLabelTone, getDisplayedAiLabel, shouldShowRawTrustStatus } from "@/lib/trustPresentation";
+import { getExpertReviewReasons } from "@/lib/expertReview";
+
+// P2.4 boundary (verification-boundary correction, post-P2.3): the pre-P2.3
+// detail page rendered TrustVerdictBadge + VerificationBadge - two
+// independently-computed verdicts, documented elsewhere in this codebase as
+// a known, unresolved drift (see GroundedEvidencePanel.tsx's own comment on
+// its removed internal badge). Consolidating detail onto PostCard must not
+// silently pick a side in that drift by swapping in TrustSummaryLine (the
+// canonical engine feed/profile-compact use) - that would be a verdict
+// *reconciliation* decision, which belongs to P2.4, not a container
+// consolidation, which is all P2.3 is scoped to do. So `detail` keeps
+// exactly the pre-P2.3 two-widget presentation, verbatim, while feed and
+// profile-compact keep TrustSummaryLine (their pre-existing presentation,
+// unchanged). Neither widget's internals, props, labels, thresholds, or
+// scoring were touched - only relocated into the shared component.
 
 export type User = {
   _id: string;
@@ -90,6 +114,8 @@ export type Post = {
   createdAt?: string;
 };
 
+export type PostCardVariant = "feed" | "detail" | "profile-compact";
+
 function formatRelativeTime(createdAt?: string) {
   if (!createdAt) {
     return "Just now";
@@ -142,83 +168,173 @@ export function formatCommentCountLabel(comments?: Comment[]): string {
   return `${count} comments`;
 }
 
+const FOCUS_RING =
+  "focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]";
+
 type PostCardProps = {
   post: Post;
   currentUser: User | null;
   currentUserId?: string;
+  variant?: PostCardVariant;
 
-  // Editing (parent-owned - only one post editable at a time, matching
-  // existing behavior exactly).
-  isEditing: boolean;
-  editContent: string;
-  onEditContentChange: (value: string) => void;
-  onStartEdit: (postId: string, existingContent: string) => void;
-  onSaveEdit: (postId: string) => void;
-  onCancelEdit: () => void;
+  // Editing (own-post only; optional - pages that don't support inline
+  // edit for this variant simply omit these props and no Edit control
+  // renders).
+  isEditing?: boolean;
+  editContent?: string;
+  onEditContentChange?: (value: string) => void;
+  onStartEdit?: (postId: string, existingContent: string) => void;
+  onSaveEdit?: (postId: string) => void;
+  onCancelEdit?: () => void;
 
-  // Evidence disclosure toggle (parent-owned).
-  isEvidenceExpanded: boolean;
-  onToggleEvidence: (postId: string) => void;
+  // Evidence disclosure. Only consulted for variant="feed" (progressive,
+  // compact); "detail" always renders the full panel unconditionally;
+  // "profile-compact" renders no evidence panel at all. If the parent
+  // doesn't pass isEvidenceExpanded/onToggleEvidence, feed manages its own
+  // internal expand/collapse state instead of requiring every caller to.
+  isEvidenceExpanded?: boolean;
+  onToggleEvidence?: (postId: string) => void;
 
-  // Voting / social actions.
-  onVote: (postId: string, voteType: "accurate" | "inaccurate") => void;
-  onRepost: (postId: string) => void;
-  onSave: (postId: string) => void;
-  isSaved: boolean;
+  // Voting / social actions - all optional; omitted handler = control not
+  // rendered, never a broken button.
+  onVote?: (postId: string, voteType: "accurate" | "inaccurate") => void;
+  onRepost?: (postId: string) => void;
+  onSave?: (postId: string) => void;
+  isSaved?: boolean;
 
-  // Moderation / management.
-  onDelete: (postId: string) => void;
-  onFollow: (userId: string) => void;
-  onToggleRelation: (userId: string, relationType: "block" | "mute") => void;
-  isFollowing: boolean;
-  isMuted: boolean;
-  isBlocked: boolean;
-  onReport: (postId: string) => void;
-  reportReason: string;
-  onReportReasonChange: (postId: string, reason: string) => void;
+  // Moderation / management - all optional, same rule.
+  onDelete?: (postId: string) => void;
+  onFollow?: (userId: string) => void;
+  onToggleRelation?: (userId: string, relationType: "block" | "mute") => void;
+  isFollowing?: boolean;
+  isMuted?: boolean;
+  isBlocked?: boolean;
+  onReport?: (postId: string) => void;
+  reportReason?: string;
+  onReportReasonChange?: (postId: string, reason: string) => void;
 
-  // Comments (desktop: inline expand/collapse; mobile: routes to detail page).
-  isCommentsExpanded: boolean;
-  onToggleComments: (postId: string) => void;
-  comments: Comment[] | undefined;
-  commentInput: string;
-  onCommentInputChange: (postId: string, value: string) => void;
-  onAddComment: (postId: string) => void;
-  onLoadComments: (postId: string) => void;
+  // Comments. variant="feed": existing dual mobile-link/desktop-toggle
+  // inline panel, parent-controlled exactly as before. variant="detail":
+  // a static (non-interactive) count - the real thread lives below on the
+  // same page, owned entirely by that page, untouched by this component.
+  // variant="profile-compact": no comment affordance here at all - the
+  // "View full analysis" link is the route to the real thread.
+  isCommentsExpanded?: boolean;
+  onToggleComments?: (postId: string) => void;
+  comments?: Comment[];
+  commentInput?: string;
+  onCommentInputChange?: (postId: string, value: string) => void;
+  onAddComment?: (postId: string) => void;
+  onLoadComments?: (postId: string) => void;
 
   // Navigation.
-  onNavigateToProfile: (username: string) => void;
+  onNavigateToProfile?: (username: string) => void;
 };
+
+// Small, local disclosure for secondary/overflow actions. Deliberately not
+// imported from components/shell/ProfileMenu - same interaction discipline
+// (click/outside-click/Escape/focus-return, aria-haspopup+aria-expanded),
+// but PostCard stays independent of the application shell entirely.
+function PostOverflowMenu({
+  postId,
+  label,
+  children,
+}: {
+  postId: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        aria-controls={`post-overflow-${postId}`}
+        className={`vv-post-action-button ${FOCUS_RING}`}
+      >
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden="true">&#8943;</span>
+          <span className="hidden sm:inline">More</span>
+        </span>
+      </button>
+
+      {open && (
+        <div
+          id={`post-overflow-${postId}`}
+          ref={panelRef}
+          role="menu"
+          aria-label={label}
+          className="vv-post-menu-panel absolute right-0 top-full z-10 mt-2 w-64"
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function PostCard({
   post,
   currentUser,
   currentUserId,
-  isEditing,
-  editContent,
+  variant = "feed",
+  isEditing = false,
+  editContent = "",
   onEditContentChange,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
-  isEvidenceExpanded,
+  isEvidenceExpanded: isEvidenceExpandedProp,
   onToggleEvidence,
   onVote,
   onRepost,
   onSave,
-  isSaved,
+  isSaved = false,
   onDelete,
   onFollow,
   onToggleRelation,
-  isFollowing,
-  isMuted,
-  isBlocked,
+  isFollowing = false,
+  isMuted = false,
+  isBlocked = false,
   onReport,
-  reportReason,
+  reportReason = "other",
   onReportReasonChange,
-  isCommentsExpanded,
+  isCommentsExpanded = false,
   onToggleComments,
   comments,
-  commentInput,
+  commentInput = "",
   onCommentInputChange,
   onAddComment,
   onLoadComments,
@@ -226,6 +342,17 @@ export default function PostCard({
 }: PostCardProps) {
   const [shareFeedback, setShareFeedback] = useState("");
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [internalEvidenceExpanded, setInternalEvidenceExpanded] = useState(false);
+
+  const isOwnPost = Boolean(currentUserId) && currentUserId === post.author?._id;
+  const canEngage = currentUser?.role === "user" || currentUser?.role === "expert";
+  const isEvidenceExpanded =
+    variant === "detail" ? true : isEvidenceExpandedProp ?? internalEvidenceExpanded;
+
+  const handleToggleEvidence = () => {
+    if (onToggleEvidence) onToggleEvidence(post._id);
+    else setInternalEvidenceExpanded((prev) => !prev);
+  };
 
   const handleShare = async () => {
     setShareFeedback("");
@@ -238,6 +365,32 @@ export default function PostCard({
     if (result.status === "cancelled") return;
     if (result.message) setShareFeedback(result.message);
   };
+
+  const displayedAiLabel = getDisplayedAiLabel(post);
+  const expertReviewReasons =
+    variant === "detail" && post.needsExpertReview
+      ? getExpertReviewReasons(
+          post.content,
+          post.hashtags || [],
+          Number(post.aiRiskScore || 0),
+          post.groundingStatus || "not_checked",
+          post.groundingSources || []
+        )
+      : [];
+
+  // Repost/Share/Save keep the same role gate Endorse/Oppose already have
+  // (canEngage) - they were part of the same role-gated "Engage" cluster
+  // before this consolidation, and moving them into the shared overflow
+  // must not quietly relax who can see them. Follow/Mute/Block/Report/
+  // Delete were never role-gated (only ownership-gated), unchanged here.
+  const canShare = canEngage;
+  const hasOverflowContent =
+    (canEngage && (Boolean(onRepost) || Boolean(onSave))) ||
+    canShare ||
+    (!isOwnPost && Boolean(onFollow)) ||
+    (!isOwnPost && Boolean(onToggleRelation)) ||
+    (!isOwnPost && Boolean(onReport)) ||
+    (isOwnPost && Boolean(onDelete));
 
   return (
     <div data-testid="post-card" className="vv-card p-3 sm:p-4">
@@ -261,7 +414,7 @@ export default function PostCard({
 
             <div>
               <button
-                onClick={() => onNavigateToProfile(post.author?.username)}
+                onClick={() => onNavigateToProfile?.(post.author?.username)}
                 className="font-semibold text-left hover:underline text-veriverse-dark"
               >
                 {post.author?.username}
@@ -279,10 +432,10 @@ export default function PostCard({
               className="vv-textarea mb-2"
               rows={3}
               value={editContent}
-              onChange={(e) => onEditContentChange(e.target.value)}
+              onChange={(e) => onEditContentChange?.(e.target.value)}
             />
             <div className="flex gap-2">
-              <button onClick={() => onSaveEdit(post._id)} className="vv-btn-primary">
+              <button onClick={() => onSaveEdit?.(post._id)} className="vv-btn-primary">
                 Save
               </button>
               <button onClick={onCancelEdit} className="vv-btn-secondary">
@@ -296,208 +449,278 @@ export default function PostCard({
           </p>
         )}
 
-        <TrustSummaryLine
-          status={post.status}
-          expertDecision={post.expertDecision}
-          verificationScore={post.verificationScore}
-          contradictionCount={post.contradictionCount}
-          supportCount={post.supportCount}
-          groundingSources={post.groundingSources}
-          groundingStatus={post.groundingStatus}
-          contentType={post.contentType}
-        />
-
-        <button
-          type="button"
-          onClick={() => onToggleEvidence(post._id)}
-          aria-expanded={isEvidenceExpanded}
-          aria-controls={`evidence-panel-${post._id}`}
-          className="mt-4 w-full rounded-[24px] border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium text-veriverse-dark">
-              Why this assessment?
-            </span>
-            <ActionIcon
-              name="chevronDown"
-              className={`text-veriverse-dark/50 transition-transform ${
-                isEvidenceExpanded ? "rotate-180" : ""
-              }`}
-            />
+        {variant === "detail" ? (
+          // Pre-P2.3 detail verdict presentation, preserved verbatim - see
+          // the P2.4-boundary note above the imports. Not the canonical
+          // TrustSummaryLine feed/profile-compact use below.
+          <div className="vv-post-panel">
+            <p className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-500">Decision State</p>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {shouldShowRawTrustStatus(post.status) && (
+                <span className="vv-pill-gray">{post.status}</span>
+              )}
+              <TrustVerdictBadge
+                status={post.status}
+                expertDecision={post.expertDecision}
+                verificationScore={post.verificationScore}
+                contradictionCount={post.contradictionCount}
+                groundingSources={post.groundingSources}
+                contentType={post.contentType}
+              />
+              <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(displayedAiLabel)}`}>
+                AI: {displayedAiLabel.replaceAll("_", " ")}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">Evidence strength:</span>
+              <VerificationBadge score={post.verificationScore} showScore={true} />
+            </div>
           </div>
-        </button>
-
-        {isEvidenceExpanded && (
-          <div id={`evidence-panel-${post._id}`} className="mt-2">
-            <GroundedEvidencePanel
-              groundingStatus={post.groundingStatus}
-              groundingSummary={post.groundingSummary}
-              groundingSources={post.groundingSources}
-              groundingConfidence={post.groundingConfidence}
-              contradictionCount={post.contradictionCount}
-              supportCount={post.supportCount}
-              evidenceAssessment={post.evidenceAssessment}
-              maxSources={3}
-              compact
-            />
-          </div>
+        ) : (
+          <TrustSummaryLine
+            status={post.status}
+            expertDecision={post.expertDecision}
+            verificationScore={post.verificationScore}
+            contradictionCount={post.contradictionCount}
+            supportCount={post.supportCount}
+            groundingSources={post.groundingSources}
+            groundingStatus={post.groundingStatus}
+            contentType={post.contentType}
+          />
         )}
 
-        <Link
-          href={`/posts/${post._id}`}
-          className="vv-link-accent mt-3 inline-flex text-xs font-medium"
-        >
-          View full analysis &rarr;
-        </Link>
+        {variant !== "profile-compact" && (
+          <>
+            {variant === "feed" && (
+              <button
+                type="button"
+                onClick={handleToggleEvidence}
+                aria-expanded={isEvidenceExpanded}
+                aria-controls={`evidence-panel-${post._id}`}
+                className={`mt-4 w-full rounded-[24px] border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white ${FOCUS_RING}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-veriverse-dark">
+                    Why this assessment?
+                  </span>
+                  <ActionIcon
+                    name="chevronDown"
+                    className={`text-veriverse-dark/50 transition-transform ${
+                      isEvidenceExpanded ? "rotate-180" : ""
+                    }`}
+                  />
+                </div>
+              </button>
+            )}
+
+            {isEvidenceExpanded && (
+              <div id={`evidence-panel-${post._id}`} className="mt-2">
+                <GroundedEvidencePanel
+                  groundingStatus={post.groundingStatus}
+                  groundingSummary={post.groundingSummary}
+                  groundingSources={post.groundingSources}
+                  groundingConfidence={post.groundingConfidence}
+                  contradictionCount={post.contradictionCount}
+                  supportCount={post.supportCount}
+                  evidenceAssessment={post.evidenceAssessment}
+                  verificationScore={post.verificationScore}
+                  maxSources={variant === "detail" ? undefined : 3}
+                  compact={variant !== "detail"}
+                />
+              </div>
+            )}
+
+            {variant === "detail" && Array.isArray(post.moderationReasons) && post.moderationReasons.length > 0 && (
+              <div className="vv-post-panel-accent mt-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-900">
+                  Moderation Signals
+                </p>
+                <ModerationReasonList reasons={post.moderationReasons} className="mb-0" sourceLimit={0} />
+              </div>
+            )}
+
+            {variant === "detail" && post.needsExpertReview && (
+              <div className="vv-post-panel mt-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
+                  Expert Review Required
+                </p>
+                <p className="text-xs leading-6 text-slate-500">
+                  {expertReviewReasons.join("; ") || "Sensitive content requires a human check."}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {variant === "feed" && (
+          <Link
+            href={`/posts/${post._id}`}
+            className="vv-link-accent mt-3 inline-flex text-xs font-medium"
+          >
+            View full analysis &rarr;
+          </Link>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-3 mb-4">
-        {(currentUser?.role === "user" || currentUser?.role === "expert") && (
-          <div className="vv-post-action-cluster">
-            <p className="vv-post-action-title">Engage With This Claim</p>
-            <div className="vv-post-action-grid">
+      {variant !== "profile-compact" && (canEngage || Boolean(currentUser)) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {canEngage && onVote && (
+            <>
               <button
                 onClick={() => onVote(post._id, "accurate")}
                 disabled={post.finalized}
                 aria-label={`Endorse post by ${post.author?.username}`}
                 aria-disabled={post.finalized}
-                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-strong"
+                className={`vv-post-action-button vv-post-action-strong ${FOCUS_RING}`}
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name="thumbsUp" />
-                  Endorse
+                  <span className="hidden sm:inline">Endorse</span>
                 </span>
-                <span>{post.accurateVotes}</span>
+                <span>{post.accurateVotes || 0}</span>
               </button>
               <button
                 onClick={() => onVote(post._id, "inaccurate")}
                 disabled={post.finalized}
                 aria-label={`Oppose post by ${post.author?.username}`}
                 aria-disabled={post.finalized}
-                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-warn"
+                className={`vv-post-action-button vv-post-action-oppose ${FOCUS_RING}`}
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name="thumbsDown" />
-                  Oppose
+                  <span className="hidden sm:inline">Oppose</span>
                 </span>
-                <span>{post.inaccurateVotes}</span>
+                <span>{post.inaccurateVotes || 0}</span>
               </button>
-              <button
-                onClick={() => onRepost(post._id)}
-                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
+            </>
+          )}
+
+          {variant === "feed" && (
+            <>
+              <Link
+                href={`/posts/${post._id}`}
+                className={`vv-post-action-button sm:hidden ${FOCUS_RING}`}
               >
                 <span className="flex items-center gap-1.5">
-                  <ActionIcon name="repost" />
-                  Repost
+                  <span aria-hidden="true">💬</span>
                 </span>
-                <span>{post.repostsCount || 0}</span>
-              </button>
+              </Link>
               <button
                 type="button"
-                data-testid={`share-post-${post._id}`}
-                onClick={handleShare}
-                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
+                onClick={() => onToggleComments?.(post._id)}
+                aria-expanded={isCommentsExpanded}
+                aria-controls={`comments-panel-${post._id}`}
+                className={`vv-post-action-button hidden sm:inline-flex ${FOCUS_RING}`}
               >
                 <span className="flex items-center gap-1.5">
-                  <span aria-hidden="true">🔗</span>
-                  Share
+                  <span aria-hidden="true">💬</span>
+                  <span className="hidden sm:inline">{formatCommentCountLabel(comments)}</span>
                 </span>
               </button>
-              <button
-                onClick={() => onSave(post._id)}
-                className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
-              >
-                <span className="flex items-center gap-1.5">
+            </>
+          )}
+
+          {variant === "detail" && (
+            <span className={`vv-post-action-button vv-post-action-static`}>
+              <span className="flex items-center gap-1.5">
+                <span aria-hidden="true">💬</span>
+                <span className="hidden sm:inline">{formatCommentCountLabel(comments)}</span>
+              </span>
+            </span>
+          )}
+
+          {isOwnPost && onStartEdit && !post.finalized && (
+            <button
+              onClick={() => onStartEdit(post._id, post.content)}
+              className={`vv-post-action-button ${FOCUS_RING}`}
+            >
+              <span className="flex items-center gap-1.5">
+                <ActionIcon name="pencil" />
+                <span className="hidden sm:inline">Edit</span>
+              </span>
+            </button>
+          )}
+
+          {hasOverflowContent && (
+            <PostOverflowMenu postId={post._id} label={`More actions for post by ${post.author?.username}`}>
+              {canEngage && onRepost && (
+                <button
+                  onClick={() => onRepost(post._id)}
+                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                >
+                  <ActionIcon name="repost" />
+                  Repost ({post.repostsCount || 0})
+                </button>
+              )}
+              {canEngage && onSave && (
+                <button
+                  onClick={() => onSave(post._id)}
+                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                >
                   <ActionIcon name={isSaved ? "bookmarkFilled" : "bookmark"} />
                   {isSaved ? "Saved" : "Save"}
-                </span>
-              </button>
-            </div>
-            {shareFeedback && (
-              <p data-testid={`share-feedback-${post._id}`} className="mt-2 text-xs text-slate-500">
-                {shareFeedback}
-              </p>
-            )}
-          </div>
-        )}
-
-        {Boolean(currentUser) && (
-          <div className="vv-post-action-cluster">
-            <p className="vv-post-action-title">Moderate And Manage</p>
-            <div className="space-y-3">
-              {currentUserId === post.author?._id && !post.finalized && (
-                <div className="vv-post-action-grid xl:grid-cols-2">
-                  <button
-                    onClick={() => onStartEdit(post._id, post.content)}
-                    className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <ActionIcon name="pencil" />
-                      Edit
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => setIsDeleteConfirmOpen(true)}
-                    className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-warn"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <ActionIcon name="trash" />
-                      Delete
-                    </span>
-                  </button>
-                </div>
+                </button>
               )}
-              {currentUserId !== post.author?._id && (
+              {canShare && (
+                <button
+                  type="button"
+                  data-testid={`share-post-${post._id}`}
+                  onClick={handleShare}
+                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                >
+                  <span aria-hidden="true">🔗</span>
+                  Share
+                </button>
+              )}
+
+              {!isOwnPost && onFollow && (
+                <button
+                  onClick={() => onFollow(post.author._id)}
+                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                >
+                  <ActionIcon name={isFollowing ? "userCheck" : "userPlus"} />
+                  {isFollowing ? "Following" : "Follow"}
+                </button>
+              )}
+              {!isOwnPost && onToggleRelation && (
+                <button
+                  onClick={() => onToggleRelation(post.author._id, "mute")}
+                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                >
+                  <ActionIcon name={isMuted ? "unmute" : "mute"} />
+                  {isMuted ? "Unmute" : "Mute"}
+                </button>
+              )}
+              {!isOwnPost && (onFollow || onToggleRelation || onReport) && (
+                <div className="my-1 border-t border-black/5" />
+              )}
+              {!isOwnPost && onToggleRelation && (
+                <button
+                  onClick={() => {
+                    const confirmed = isBlocked
+                      ? true
+                      : window.confirm("Block this user and hide their posts from your feed?");
+                    if (confirmed) onToggleRelation(post.author._id, "block");
+                  }}
+                  className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
+                >
+                  <ActionIcon name="shieldOff" />
+                  {isBlocked ? "Unblock" : "Block"}
+                </button>
+              )}
+              {!isOwnPost && onReport && (
                 <>
-                  <div className="vv-post-action-grid xl:grid-cols-2">
-                    <button
-                      onClick={() => onFollow(post.author._id)}
-                      className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <ActionIcon name={isFollowing ? "userCheck" : "userPlus"} />
-                        {isFollowing ? "Following" : "Follow"}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => onToggleRelation(post.author._id, "mute")}
-                      className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <ActionIcon name={isMuted ? "unmute" : "mute"} />
-                        {isMuted ? "Unmute" : "Mute"}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        const confirmed = isBlocked
-                          ? true
-                          : window.confirm(
-                              "Block this user and hide their posts from your feed?"
-                            );
-                        if (confirmed) onToggleRelation(post.author._id, "block");
-                      }}
-                      className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-warn"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <ActionIcon name="shieldOff" />
-                        {isBlocked ? "Unblock" : "Block"}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => onReport(post._id)}
-                      className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-warn"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <ActionIcon name="flag" />
-                        Report
-                      </span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => onReport(post._id)}
+                    className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
+                  >
+                    <ActionIcon name="flag" />
+                    Report
+                  </button>
                   <select
-                    className="vv-select w-full"
+                    className="vv-select mt-1 w-full text-sm"
                     value={reportReason || "other"}
-                    onChange={(e) => onReportReasonChange(post._id, e.target.value)}
+                    onChange={(e) => onReportReasonChange?.(post._id, e.target.value)}
                   >
                     <option value="misinformation">Misinformation</option>
                     <option value="spam">Spam</option>
@@ -506,75 +729,136 @@ export default function PostCard({
                   </select>
                 </>
               )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="vv-divider pt-4">
-        {/* Mobile: routes to the detail page's full threaded-comment view
-            instead of expanding the feed comment UI inline. Desktop: toggles
-            the inline panel below. Both read the same count label. */}
-        <Link
-          href={`/posts/${post._id}`}
-          className="inline-flex items-center gap-1.5 rounded-lg text-sm text-slate-600 hover:text-veriverse-dark focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] sm:hidden"
-        >
-          <span aria-hidden="true">💬</span>
-          View conversation &middot; {formatCommentCountLabel(comments)}
-        </Link>
-
-        <button
-          type="button"
-          onClick={() => onToggleComments(post._id)}
-          aria-expanded={isCommentsExpanded}
-          aria-controls={`comments-panel-${post._id}`}
-          className="hidden items-center gap-1.5 rounded-lg text-sm text-slate-600 transition hover:text-veriverse-dark focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] sm:inline-flex"
-        >
-          <span aria-hidden="true">💬</span>
-          View conversation &middot; {formatCommentCountLabel(comments)}
-        </button>
-
-        {isCommentsExpanded && (
-          <div id={`comments-panel-${post._id}`} className="mt-3 hidden sm:block">
-            <div className="vv-post-comment-shell">
-              <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                <input
-                  className="vv-input flex-1"
-                  placeholder="Add a comment"
-                  aria-label={`Add a comment to post by ${post.author?.username}`}
-                  value={commentInput}
-                  onChange={(e) => onCommentInputChange(post._id, e.target.value)}
-                />
-                <button onClick={() => onAddComment(post._id)} className="vv-btn-accent">
-                  Send
+              {isOwnPost && onDelete && (
+                <button
+                  onClick={() => setIsDeleteConfirmOpen(true)}
+                  className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
+                >
+                  <ActionIcon name="trash" />
+                  Delete
                 </button>
-              </div>
+              )}
+            </PostOverflowMenu>
+          )}
 
-              <div className="space-y-3">
-                {!comments ? (
+          {shareFeedback && (
+            <p data-testid={`share-feedback-${post._id}`} className="w-full text-xs text-slate-500">
+              {shareFeedback}
+            </p>
+          )}
+        </div>
+      )}
+
+      {variant === "profile-compact" && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {canEngage && onVote && (
+            <>
+              <button
+                onClick={() => onVote(post._id, "accurate")}
+                disabled={post.finalized}
+                aria-label={`Endorse post by ${post.author?.username}`}
+                className={`vv-post-action-button vv-post-action-strong ${FOCUS_RING}`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <ActionIcon name="thumbsUp" />
+                </span>
+                <span>{post.accurateVotes || 0}</span>
+              </button>
+              <button
+                onClick={() => onVote(post._id, "inaccurate")}
+                disabled={post.finalized}
+                aria-label={`Oppose post by ${post.author?.username}`}
+                className={`vv-post-action-button vv-post-action-oppose ${FOCUS_RING}`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <ActionIcon name="thumbsDown" />
+                </span>
+                <span>{post.inaccurateVotes || 0}</span>
+              </button>
+            </>
+          )}
+          <Link href={`/posts/${post._id}`} className="vv-link-accent text-xs font-medium">
+            View full analysis &rarr;
+          </Link>
+
+          {hasOverflowContent && (
+            <PostOverflowMenu postId={post._id} label={`More actions for post by ${post.author?.username}`}>
+              {!isOwnPost && onReport && (
+                <>
                   <button
-                    onClick={() => onLoadComments(post._id)}
-                    className="vv-btn-secondary"
+                    onClick={() => onReport(post._id)}
+                    className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
                   >
-                    Load Comments
+                    <ActionIcon name="flag" />
+                    Report
                   </button>
-                ) : (
-                  <div className="space-y-3">
-                    {comments.map((comment) => (
-                      <div key={comment._id} className="vv-post-comment-thread">
-                        <p className="text-sm font-medium text-veriverse-dark mb-1">
-                          {comment.author?.username}
-                        </p>
-                        <p className="text-sm text-slate-700 leading-6">{comment.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  <select
+                    className="vv-select mt-1 w-full text-sm"
+                    value={reportReason || "other"}
+                    onChange={(e) => onReportReasonChange?.(post._id, e.target.value)}
+                  >
+                    <option value="misinformation">Misinformation</option>
+                    <option value="spam">Spam</option>
+                    <option value="abuse">Abuse</option>
+                    <option value="other">Other</option>
+                  </select>
+                </>
+              )}
+              {isOwnPost && onDelete && (
+                <button
+                  onClick={() => setIsDeleteConfirmOpen(true)}
+                  className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
+                >
+                  <ActionIcon name="trash" />
+                  Delete
+                </button>
+              )}
+            </PostOverflowMenu>
+          )}
+        </div>
+      )}
+
+      {variant === "feed" && (
+        <div className="vv-divider pt-4">
+          {isCommentsExpanded && (
+            <div id={`comments-panel-${post._id}`} className="hidden sm:block">
+              <div className="vv-post-comment-shell">
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    className="vv-input flex-1"
+                    placeholder="Add a comment"
+                    aria-label={`Add a comment to post by ${post.author?.username}`}
+                    value={commentInput}
+                    onChange={(e) => onCommentInputChange?.(post._id, e.target.value)}
+                  />
+                  <button onClick={() => onAddComment?.(post._id)} className="vv-btn-accent">
+                    Send
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {!comments ? (
+                    <button onClick={() => onLoadComments?.(post._id)} className="vv-btn-secondary">
+                      Load Comments
+                    </button>
+                  ) : (
+                    <div className="space-y-3">
+                      {comments.map((comment) => (
+                        <div key={comment._id} className="vv-post-comment-thread">
+                          <p className="mb-1 text-sm font-medium text-veriverse-dark">
+                            {comment.author?.username}
+                          </p>
+                          <p className="text-sm leading-6 text-slate-700">{comment.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
         <span>{post.finalized ? "Finalized" : "Open for voting"}</span>
@@ -583,18 +867,20 @@ export default function PostCard({
         </span>
       </div>
 
-      <ConfirmDialog
-        open={isDeleteConfirmOpen}
-        title="Delete this post?"
-        description="Are you sure you want to delete this post?"
-        confirmLabel="Delete"
-        destructive
-        onCancel={() => setIsDeleteConfirmOpen(false)}
-        onConfirm={() => {
-          setIsDeleteConfirmOpen(false);
-          onDelete(post._id);
-        }}
-      />
+      {onDelete && (
+        <ConfirmDialog
+          open={isDeleteConfirmOpen}
+          title="Delete this post?"
+          description="Are you sure you want to delete this post?"
+          confirmLabel="Delete"
+          destructive
+          onCancel={() => setIsDeleteConfirmOpen(false)}
+          onConfirm={() => {
+            setIsDeleteConfirmOpen(false);
+            onDelete(post._id);
+          }}
+        />
+      )}
     </div>
   );
 }

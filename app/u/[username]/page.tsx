@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import PageWrapper from "@/components/PageWrapper";
-import TrustVerdictBadge from "@/components/TrustVerdictBadge";
-import { getAiLabelTone, getDisplayedAiLabel } from "@/lib/trustPresentation";
+import PostCard, { type Post as PostCardPost } from "@/components/PostCard";
 import { api, getErrorMessage } from "@/lib/apiClient";
 import ReputationInfo from "@/components/ReputationInfo";
 import { fetchMySafetyRelations, toggleSafetyRelation } from "@/lib/profileTrustClient";
@@ -22,6 +21,11 @@ type User = {
   rewardPoints: number;
   avatarUrl?: string;
   badges?: string[];
+  // Already present on the /api/me response this page already fetches
+  // (same shape used everywhere else); only the type declaration was
+  // missing, needed so the viewer's role can reach PostCard's canEngage
+  // check for profile-compact's Endorse/Oppose.
+  role?: string;
 };
 
 type Relation = {
@@ -31,22 +35,12 @@ type Relation = {
   };
 };
 
-type Post = {
-  _id: string;
-  content: string;
-  status: string;
-  aiLabel: string;
-  expertDecision?: string;
-  verificationScore?: number | null;
-  contradictionCount?: number;
-  groundingSources?: Array<{
-    stance: "supports" | "contradicts" | "context" | "unknown";
-  }>;
-  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
-  accurateVotes: number;
-  inaccurateVotes: number;
-  createdAt: string;
-};
+// Public-profile posts come back without an author object (redundant -
+// every post here belongs to the profile being viewed). Reuses PostCard's
+// own Post type otherwise, rather than a second, looser (`status: string`)
+// definition; `author` is synthesized from the already-fetched profile
+// user at render time, never from a new API field.
+type Post = Omit<PostCardPost, "author"> & { author?: PostCardPost["author"] };
 
 export default function PublicProfilePage({
   params,
@@ -66,6 +60,7 @@ export default function PublicProfilePage({
   const [followCounts, setFollowCounts] = useState<{ followers: number; following: number } | null>(null);
   const [relations, setRelations] = useState<Relation[]>([]);
   const [relationBusy, setRelationBusy] = useState(false);
+  const [reportReasons, setReportReasons] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchProfile();
@@ -219,6 +214,28 @@ export default function PublicProfilePage({
     }
   };
 
+  const votePost = async (postId: string, voteType: "accurate" | "inaccurate") => {
+    try {
+      const res = await api.post(`/posts/${postId}/vote`, { voteType });
+      const updatedPost = res.data.post;
+      setPosts((prev) =>
+        prev.map((post) => (String(post._id) === String(postId) ? { ...post, ...updatedPost } : post))
+      );
+    } catch (error: any) {
+      setMessage(getErrorMessage(error, "Failed to record vote"));
+    }
+  };
+
+  const reportPost = async (postId: string) => {
+    const reason = reportReasons[postId] || "other";
+    try {
+      const res = await api.post("/reports", { postId, reason });
+      setMessage(res.data.message || "Report submitted.");
+    } catch (error: any) {
+      setMessage(getErrorMessage(error, "Failed to submit report"));
+    }
+  };
+
   return (
     <PageWrapper title="Public Profile" subtitle="See a contributor's reputation, badges, and published claims.">
       {message && <div className="vv-banner mb-4">{message}</div>}
@@ -351,29 +368,40 @@ export default function PublicProfilePage({
           <p className="vv-subtitle">No public posts found.</p>
         ) : (
           <div className="space-y-4">
-            {posts.map((post) => (
-              <div key={post._id} className="vv-card-soft p-4">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <TrustVerdictBadge
-                      status={post.status}
-                      expertDecision={post.expertDecision}
-                      verificationScore={post.verificationScore}
-                      contradictionCount={post.contradictionCount}
-                      groundingSources={post.groundingSources}
-                      contentType={post.contentType}
-                    />
-                    <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(getDisplayedAiLabel(post))}`}>
-                      AI: {getDisplayedAiLabel(post).replaceAll("_", " ")}
-                    </span>
-                  </div>
-                  <span className="text-xs text-veriverse-dark/50">
-                    {post.accurateVotes} accurate / {post.inaccurateVotes} inaccurate
-                  </span>
-                </div>
-                <p className="text-sm text-slate-700">{post.content}</p>
-              </div>
-            ))}
+            {posts.map((post) => {
+              const isViewingOwnPosts = Boolean(currentUser) && String(currentUser?._id) === String(user?._id);
+              const authoredPost: PostCardPost = {
+                ...post,
+                author: post.author ?? {
+                  _id: user?._id || "",
+                  username: user?.username || "",
+                  avatarUrl: user?.avatarUrl,
+                  reputation: user?.reputation,
+                },
+              };
+
+              return (
+                <PostCard
+                  key={post._id}
+                  variant="profile-compact"
+                  post={authoredPost}
+                  currentUser={
+                    currentUser
+                      ? { _id: currentUser._id, username: currentUser.username, role: currentUser.role }
+                      : null
+                  }
+                  currentUserId={currentUser?._id}
+                  onVote={votePost}
+                  onReport={
+                    currentUserChecked && !isViewingOwnPosts ? (postId) => reportPost(postId) : undefined
+                  }
+                  reportReason={reportReasons[post._id] || "other"}
+                  onReportReasonChange={(postId, reason) =>
+                    setReportReasons((prev) => ({ ...prev, [postId]: reason }))
+                  }
+                />
+              );
+            })}
           </div>
         )}
       </div>

@@ -7,6 +7,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PostCard, { type Post as PostCardPost } from "@/components/PostCard";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { usePageState } from "@/hooks/usePageState";
 import {
@@ -36,13 +37,12 @@ type UserProfile = {
   suspendedUntil?: string | null;
 };
 
-type Post = {
-  _id: string;
-  content: string;
-  status: string;
-  createdAt?: string;
-  trustDecisionVersion?: number;
-};
+// Own-profile posts come back without an author object (redundant - it's
+// always the viewer). Reuses PostCard's own Post type otherwise, rather
+// than a second, looser (`status: string`) definition; `author` is
+// synthesized from the already-fetched profile at render time (see
+// authoredPost below), never from a new API field.
+type Post = Omit<PostCardPost, "author"> & { author?: PostCardPost["author"] };
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -379,31 +379,28 @@ export default function ProfilePage() {
               />
             ) : (
               <div className="space-y-3">
-                {posts.map((post) => (
-                  <div key={post._id} className="vv-card-soft p-4">
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <span className="vv-pill-gray">{post.status}</span>
-                      <span className="text-xs text-slate-500">
-                        {post.createdAt
-                          ? new Date(post.createdAt).toLocaleString()
-                          : ""}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-700 mb-2">{post.content}</p>
-                    <p className="text-xs text-slate-500">
-                      Trust Version: {Number(post.trustDecisionVersion || 1)}
-                    </p>
-                    <div className="mt-3">
-                      <button
-                        onClick={() => requestDeletePost(post._id)}
-                        disabled={deletingPostId === post._id}
-                        className="vv-btn-danger"
-                      >
-                        {deletingPostId === post._id ? "Deleting..." : "Delete Post"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                {posts.map((post) => {
+                  const authoredPost: PostCardPost = {
+                    ...post,
+                    author: post.author ?? {
+                      _id: profile._id,
+                      username: profile.username,
+                      avatarUrl: profile.avatarUrl,
+                      reputation: profile.reputation,
+                    },
+                  };
+
+                  return (
+                    <PostCard
+                      key={post._id}
+                      variant="profile-compact"
+                      post={authoredPost}
+                      currentUser={{ _id: profile._id, username: profile.username, role: profile.role }}
+                      currentUserId={profile._id}
+                      onDelete={() => requestDeletePost(post._id)}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
