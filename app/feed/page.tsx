@@ -12,6 +12,7 @@ import SectionHeader from "@/components/SectionHeader";
 import Button from "@/components/ui/Button";
 import ActionIcon from "@/components/ActionIcons";
 import PostCard, { type Post, type User, type Comment } from "@/components/PostCard";
+import { getTrustVerdict } from "@/lib/trustPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { usePageState } from "@/hooks/usePageState";
@@ -88,7 +89,12 @@ export default function FeedPage() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // P2.4: renamed from statusFilter - this now filters by the same
+  // canonical verdict the cards themselves display (see getTrustVerdict()
+  // usage in filteredPosts below), not a mix of score-only predicates and
+  // raw backend status values that could silently disagree with the badge
+  // shown on a card matched by the filter.
+  const [verdictFilter, setVerdictFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("recent");
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
@@ -505,24 +511,27 @@ export default function FeedPage() {
         post.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
         post.author?.username?.toLowerCase().includes(searchTerm.toLowerCase());
 
-      let matchesStatus = true;
-      if (statusFilter === "all") {
-        matchesStatus = true;
-      } else if (statusFilter === "contradicted") {
-        matchesStatus = Number(post.contradictionCount || 0) > 0;
-      } else if (statusFilter === "well_supported") {
-        matchesStatus = Number(post.verificationScore || 0) >= 0.8;
-      } else if (statusFilter === "weak_evidence") {
-        matchesStatus =
-          Number(post.verificationScore || 0) > 0 &&
-          Number(post.verificationScore || 0) < 0.3;
-      } else if (statusFilter === "expert_decided") {
-        matchesStatus = Boolean(post.expertDecision);
-      } else {
-        matchesStatus = post.status === statusFilter;
-      }
+      // P2.4: matches the exact same canonical verdict label the post's own
+      // card renders (getTrustVerdict() is the single source of truth both
+      // read from), so a post can never appear under a filter option whose
+      // label contradicts what its own badge says. Workflow/moderation
+      // states (flagged, under_expert_review, under_appeal_review) are
+      // deliberately not offered as filter options here - see the "Verdict"
+      // optgroup below - since they describe process, not evidentiary
+      // conclusion, and this ordinary-user control isn't the place for a
+      // second moderation-state filter.
+      const matchesVerdict =
+        verdictFilter === "all" ||
+        getTrustVerdict({
+          status: post.status,
+          expertDecision: post.expertDecision,
+          verificationScore: post.verificationScore,
+          contradictionCount: post.contradictionCount,
+          groundingSources: post.groundingSources,
+          contentType: post.contentType,
+        }).label === verdictFilter;
 
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesVerdict;
     });
 
     // Sort
@@ -551,7 +560,7 @@ export default function FeedPage() {
     }
 
     return filtered;
-  }, [visiblePosts, searchTerm, statusFilter, sortOrder]);
+  }, [visiblePosts, searchTerm, verdictFilter, sortOrder]);
 
   const toggleRelation = async (
     targetUserId: string,
@@ -876,7 +885,7 @@ export default function FeedPage() {
               >
                 <span className="text-sm font-semibold text-veriverse-dark">
                   Filters &amp; sort
-                  {(searchTerm || statusFilter !== "all" || sortOrder !== "recent") && (
+                  {(searchTerm || verdictFilter !== "all" || sortOrder !== "recent") && (
                     <span className="ml-2 vv-pill-blue">Active</span>
                   )}
                 </span>
@@ -898,26 +907,27 @@ export default function FeedPage() {
                   <div className="flex flex-col sm:flex-row gap-3">
                     <select
                       className="vv-select flex-1"
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value)}
+                      value={verdictFilter}
+                      onChange={(e) => setVerdictFilter(e.target.value)}
                     >
                       <optgroup label="All content">
                         <option value="all">All posts</option>
                       </optgroup>
-                      <optgroup label="By verdict">
-                        <option value="well_supported">Well Supported</option>
-                        <option value="contradicted">Contradicted</option>
-                        <option value="weak_evidence">Weak Evidence</option>
-                        <option value="expert_decided">Expert Decided</option>
-                      </optgroup>
-                      <optgroup label="By status">
-                        <option value="unverified">Unverified</option>
-                        <option value="verified">Verified</option>
-                        <option value="disputed">Disputed</option>
-                        <option value="false">False</option>
-                        <option value="flagged">Flagged</option>
-                        <option value="under_expert_review">Expert Review</option>
-                        <option value="under_appeal_review">Appeal Review</option>
+                      {/* P2.4: one verdict-first filter, options are the
+                          exact canonical verdict labels a card can show
+                          (getTrustVerdict()'s own label strings) - not a
+                          second, independently-defined set of buckets that
+                          could name something a card would never actually
+                          display. */}
+                      <optgroup label="Verdict">
+                        <option value="Well Supported">Well Supported</option>
+                        <option value="Supported">Supported</option>
+                        <option value="Weak Evidence">Weak Evidence</option>
+                        <option value="Contradicted">Contradicted</option>
+                        <option value="Unverified">Unverified</option>
+                        <option value="Expert Verified">Expert Verified</option>
+                        <option value="Expert Rejected">Expert Rejected</option>
+                        <option value="Expert Disputed">Expert Disputed</option>
                       </optgroup>
                     </select>
 
@@ -960,7 +970,7 @@ export default function FeedPage() {
                     <button
                       onClick={() => {
                         setSearchTerm("");
-                        setStatusFilter("all");
+                        setVerdictFilter("all");
                         setSortOrder("recent");
                       }}
                       className="vv-btn-secondary"

@@ -21,23 +21,23 @@ import VerificationBadge from "@/components/VerificationBadge";
 import ModerationReasonList from "@/components/ModerationReasonList";
 import ActionIcon from "@/components/ActionIcons";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PostProvenanceDetails from "@/components/PostProvenanceDetails";
 import { sharePost } from "@/lib/shareLink";
-import { getAiLabelTone, getDisplayedAiLabel, shouldShowRawTrustStatus } from "@/lib/trustPresentation";
+import { getDisplayedAiLabel } from "@/lib/trustPresentation";
 import { getExpertReviewReasons } from "@/lib/expertReview";
 
-// P2.4 boundary (verification-boundary correction, post-P2.3): the pre-P2.3
-// detail page rendered TrustVerdictBadge + VerificationBadge - two
-// independently-computed verdicts, documented elsewhere in this codebase as
-// a known, unresolved drift (see GroundedEvidencePanel.tsx's own comment on
-// its removed internal badge). Consolidating detail onto PostCard must not
-// silently pick a side in that drift by swapping in TrustSummaryLine (the
-// canonical engine feed/profile-compact use) - that would be a verdict
-// *reconciliation* decision, which belongs to P2.4, not a container
-// consolidation, which is all P2.3 is scoped to do. So `detail` keeps
-// exactly the pre-P2.3 two-widget presentation, verbatim, while feed and
-// profile-compact keep TrustSummaryLine (their pre-existing presentation,
-// unchanged). Neither widget's internals, props, labels, thresholds, or
-// scoring were touched - only relocated into the shared component.
+// P2.4: detail's verdict presentation now uses the same canonical
+// TrustVerdictBadge as feed/profile-compact (via getTrustVerdict()), plus
+// VerificationBadge repurposed as a secondary "Evidence strength" signal
+// that self-hides whenever the verdict wasn't score-driven - see
+// lib/trustPresentation.ts's getEvidenceStrength() for why that structurally
+// prevents the "Expert Rejected" + "Strong Evidence" drift the P2.4 audit
+// found. The raw post.status pill and the equal-weight "AI: {label}" pill
+// that previously sat alongside the verdict are gone from this glance
+// layer - AI screening context moved into PostProvenanceDetails (Level 4),
+// which also absorbs "Expert Review Required". "Moderation Signals" stays
+// unconditionally visible (not folded into Details) because it carries
+// concrete safety-relevant reason tags, not just process/provenance context.
 
 export type User = {
   _id: string;
@@ -450,15 +450,14 @@ export default function PostCard({
         )}
 
         {variant === "detail" ? (
-          // Pre-P2.3 detail verdict presentation, preserved verbatim - see
-          // the P2.4-boundary note above the imports. Not the canonical
-          // TrustSummaryLine feed/profile-compact use below.
+          // One primary canonical verdict, plus Evidence strength as a
+          // clearly secondary signal (self-hides when not useful - see
+          // VerificationBadge). Same TrustVerdictBadge component feed and
+          // profile-compact use, so this can never express a different
+          // verdict than they would for identical claim data.
           <div className="vv-post-panel">
-            <p className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-500">Decision State</p>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              {shouldShowRawTrustStatus(post.status) && (
-                <span className="vv-pill-gray">{post.status}</span>
-              )}
+            <p className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-500">Verdict</p>
+            <div className="mb-3">
               <TrustVerdictBadge
                 status={post.status}
                 expertDecision={post.expertDecision}
@@ -467,14 +466,16 @@ export default function PostCard({
                 groundingSources={post.groundingSources}
                 contentType={post.contentType}
               />
-              <span className={`vv-verdict-pill vv-verdict-${getAiLabelTone(displayedAiLabel)}`}>
-                AI: {displayedAiLabel.replaceAll("_", " ")}
-              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500">Evidence strength:</span>
-              <VerificationBadge score={post.verificationScore} showScore={true} />
-            </div>
+            <VerificationBadge
+              status={post.status}
+              expertDecision={post.expertDecision}
+              verificationScore={post.verificationScore}
+              contradictionCount={post.contradictionCount}
+              groundingSources={post.groundingSources}
+              contentType={post.contentType}
+              showScore
+            />
           </div>
         ) : (
           <TrustSummaryLine
@@ -539,15 +540,15 @@ export default function PostCard({
               </div>
             )}
 
-            {variant === "detail" && post.needsExpertReview && (
-              <div className="vv-post-panel mt-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
-                  Expert Review Required
-                </p>
-                <p className="text-xs leading-6 text-slate-500">
-                  {expertReviewReasons.join("; ") || "Sensitive content requires a human check."}
-                </p>
-              </div>
+            {variant === "detail" && (
+              <PostProvenanceDetails
+                postId={post._id}
+                displayedAiLabel={displayedAiLabel}
+                groundingStatus={post.groundingStatus}
+                needsExpertReview={post.needsExpertReview}
+                expertDecision={post.expertDecision}
+                expertReviewReasons={expertReviewReasons}
+              />
             )}
           </>
         )}

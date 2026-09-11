@@ -2,10 +2,12 @@
 // One coherent trust unit for the default (collapsed) post card - a verdict
 // pill plus support/contradict counts, replacing the previously duplicated
 // raw risk/verification line and separate source/support/contradict line.
-// Reuses the existing verdict mapping (lib/trustPresentation.ts) rather than
-// inventing a second verdict engine.
+// P2.4: renders TrustVerdictBadge itself for the pill (rather than a second
+// JSX block independently calling getTrustVerdict()) so feed/profile-compact
+// and detail are guaranteed to share the exact same verdict markup for
+// identical claim data, not just the same underlying function call.
 import { getTrustVerdict, type GroundingSourceLike } from "@/lib/trustPresentation";
-import TrustIcon from "@/components/TrustIcons";
+import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 
 type Props = {
   status: string;
@@ -49,10 +51,14 @@ export default function TrustSummaryLine({
       className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm"
       title={verdict.detail ?? `Trust verdict: ${verdict.label}`}
     >
-      <span className={`vv-verdict-pill vv-verdict-${verdict.tone}`}>
-        <TrustIcon name={verdict.icon} />
-        <span>{verdict.label}</span>
-      </span>
+      <TrustVerdictBadge
+        status={status}
+        expertDecision={expertDecision}
+        verificationScore={verificationScore}
+        contradictionCount={contradictionCount}
+        groundingSources={groundingSources}
+        contentType={contentType}
+      />
       {countsAreReal && (
         <span className="text-xs text-slate-500">
           · {Number(supportCount || 0)} support · {Number(contradictionCount || 0)} contradict

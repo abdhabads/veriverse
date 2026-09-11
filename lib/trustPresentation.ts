@@ -70,7 +70,11 @@ export type TrustVerdict = {
   detail?: string;
 };
 
-type TrustVerdictInput = {
+// Exported so renderers that need to independently derive a canonical
+// verdict (e.g. VerificationBadge, the feed's verdict filter) can share the
+// exact input shape getTrustVerdict() takes, rather than each retyping it
+// and risking a field getting silently missed on one side.
+export type TrustVerdictInput = {
   status: string;
   expertDecision?: string | null;
   verificationScore?: number | null;
@@ -157,4 +161,59 @@ export function getTrustVerdict(input: TrustVerdictInput): TrustVerdict {
 
   // Default - score is genuinely null, nothing has been evaluated yet.
   return { label: "Unverified", icon: "circle", tone: "neutral", priority: 0 };
+}
+
+// --- Evidence Strength (P2.4) ---
+
+// Answers a different question than the verdict above ("how much evidence
+// is available" vs. "what does VeriVerse conclude"). Prior to P2.4 this
+// lived in VerificationBadge as a second, independently-tuned threshold
+// table (0.8/0.6/0.3) that ignored expertDecision/contradictionCount
+// entirely - so the same post could show "Expert Rejected"/"Contradicted"
+// from getTrustVerdict() above and "Strong Evidence" from that second table
+// at the same time. Reusing getTrustVerdict()'s own 0.8/0.6 bands here (no
+// third 0.3 tier) makes that specific drift structurally impossible: when
+// both are visible they are reading the same score through the same bands.
+//
+// The tiers where getTrustVerdict() did NOT decide the verdict from the
+// score - expert decisions, review states, contradiction, flagged - are
+// exactly the tiers where a separately-labelled strength pill would still
+// visually compete with the verdict even with unified bands (a "Strong"
+// pill next to "Expert Rejected" reads as contradictory regardless of
+// matching colors). getEvidenceStrength() stays hidden in those cases
+// rather than asserting a magnitude the verdict didn't use.
+const PURE_EVIDENCE_VERDICT_PRIORITIES = new Set([0, 30, 40, 50]);
+
+export type EvidenceStrengthPresentation =
+  | { visible: false }
+  | {
+      visible: true;
+      label: "Strong" | "Moderate" | "Limited";
+      tone: TrustTone;
+      icon: TrustIconName;
+      score: number;
+    };
+
+export function getEvidenceStrength(
+  verdict: TrustVerdict,
+  verificationScore?: number | null
+): EvidenceStrengthPresentation {
+  if (!PURE_EVIDENCE_VERDICT_PRIORITIES.has(verdict.priority)) {
+    return { visible: false };
+  }
+
+  const score = verificationScore ?? null;
+  if (score === null) {
+    // The canonical verdict already reads "Unverified" in this case - a
+    // second "not evaluated" signal here would just duplicate it.
+    return { visible: false };
+  }
+
+  if (score >= 0.8) {
+    return { visible: true, label: "Strong", tone: "positive", icon: "check", score };
+  }
+  if (score >= 0.6) {
+    return { visible: true, label: "Moderate", tone: "positive", icon: "check", score };
+  }
+  return { visible: true, label: "Limited", tone: "negative", icon: "x", score };
 }

@@ -116,14 +116,34 @@ export default function GroundedEvidencePanel({
   maxSources,
   compact = false,
 }: GroundedEvidencePanelProps) {
-  const hasEvidence =
+  const hasContent =
     Boolean(groundingSummary?.trim()) ||
     Boolean(evidenceAssessment?.explanation?.trim()) ||
-    groundingSources.length > 0 ||
-    groundingStatus === "insufficient_evidence";
+    groundingSources.length > 0;
+  const isInsufficient = groundingStatus === "insufficient_evidence";
+  const hasEvidence = hasContent || isInsufficient;
 
+  // P2.4: previously this component rendered nothing at all whenever there
+  // was no evidence content - which made "grounding was never run against
+  // this claim" and "grounding ran and genuinely found nothing" look
+  // identical (both silently blank, even on the detail page where this
+  // panel is otherwise always visible). The audit called this out
+  // explicitly. A plain-language message replaces the silent return; the
+  // "insufficient evidence" case below already had one and is unchanged.
   if (!hasEvidence) {
-    return null;
+    const notCheckedYet = groundingStatus == null || groundingStatus === "not_checked";
+    return (
+      <div className="vv-post-panel mb-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-veriverse-dark/60">
+          Evidence
+        </p>
+        <p className="text-sm leading-6 text-veriverse-dark/70">
+          {notCheckedYet
+            ? "Evidence check: not yet performed for this claim."
+            : "Evidence check: completed - no supporting or contradicting sources were found."}
+        </p>
+      </div>
+    );
   }
 
   const visibleSources = [...groundingSources]
@@ -156,6 +176,20 @@ export default function GroundedEvidencePanel({
       ? formatSourceDomainSummary(groundingSources.length, uniqueDomainCount)
       : null;
 
+  // P2.4: "contested" is explanatory framing over existing contradiction/
+  // support data, not a new trust-engine status - post.status is never
+  // read or changed here. Prefers the assessment's own strength ratings
+  // (already computed elsewhere, just never surfaced) over raw counts when
+  // present, since "1 weak contradiction" and "1 strong contradiction"
+  // otherwise look identical as a bare count of 1.
+  const hasMeaningfulSupport = evidenceAssessment?.supportStrength
+    ? evidenceAssessment.supportStrength !== "none"
+    : Number(displaySupportCount || 0) > 0;
+  const hasMeaningfulContradiction = evidenceAssessment?.contradictionStrength
+    ? evidenceAssessment.contradictionStrength !== "none"
+    : Number(displayContradictionCount || 0) > 0;
+  const isContested = hasMeaningfulSupport && hasMeaningfulContradiction;
+
   return (
     <div className="vv-post-panel mb-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -169,6 +203,13 @@ export default function GroundedEvidencePanel({
         ) : null}
       </div>
 
+      {isContested && (
+        <p className="vv-verdict-pill vv-verdict-review mb-3 inline-flex w-fit">
+          <TrustIcon name="alert" size={11} />
+          Contested - both supporting and contradicting evidence exist
+        </p>
+      )}
+
       <p className="mb-3 text-sm leading-6 text-veriverse-dark/80">{summary}</p>
 
       <div className="mb-3 flex flex-wrap gap-2">
@@ -177,8 +218,11 @@ export default function GroundedEvidencePanel({
             {sourceDomainSummary}
           </span>
         ) : null}
-        <span className="vv-verdict-pill vv-verdict-neutral">
-          Evidence confidence: {Math.round(Number(groundingConfidence || 0))}%
+        <span
+          className="vv-verdict-pill vv-verdict-neutral"
+          title="Reflects how thoroughly evidence was searched for - not how likely the claim is true."
+        >
+          Search confidence: {Math.round(Number(groundingConfidence || 0))}%
         </span>
         <span className="vv-verdict-pill vv-verdict-positive">
           Supports: {Number(displaySupportCount || 0)}
