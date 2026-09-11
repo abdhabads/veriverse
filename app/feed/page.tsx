@@ -13,6 +13,7 @@ import Button from "@/components/ui/Button";
 import ActionIcon from "@/components/ActionIcons";
 import PostCard, { type Post, type User, type Comment } from "@/components/PostCard";
 import { getTrustVerdict } from "@/lib/trustPresentation";
+import { isEvidenceHighlight } from "@/lib/discoveryPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { usePageState } from "@/hooks/usePageState";
@@ -608,8 +609,26 @@ export default function FeedPage() {
   };
 
   const currentUserId = currentUser?._id || currentUser?.id;
-  const verifiedPosts = posts.filter((post) => post.status === "verified");
-  const trendingPosts = [...posts].sort(
+  // P2.7: reuses the canonical getTrustVerdict() (via isEvidenceHighlight)
+  // instead of the raw post.status field - the audit found the previous
+  // `status === "verified"` check could disagree with the same post's own
+  // TrustVerdictBadge elsewhere on the page (e.g. a contradicted or
+  // expert-rejected post whose status hadn't been updated would still show
+  // here as if it were a positive highlight). Named "Evidence Highlights"
+  // rather than "Verified" because the selector intentionally includes
+  // every canonical positive tier (Expert Verified, Well Supported, and
+  // the weaker Supported band) - calling a merely-Supported claim
+  // "Verified" would overstate it.
+  const evidenceHighlightPosts = posts.filter(isEvidenceHighlight);
+  // P2.7: this is a client-side re-sort of whatever posts are already
+  // loaded into this page's own state, by raw combined vote count - not a
+  // platform-wide trending computation, and it does not account for
+  // verdict at all (a heavily-contested/contradicted post ranks the same
+  // as a heavily-endorsed one, since Endorse+Oppose are just summed).
+  // Renamed from "Trending" to "High Activity" - the metric is vote
+  // volume, not discussion (a post with many votes and zero comments would
+  // otherwise be mislabeled "Most Discussed") - see the P2.7 audit.
+  const highActivityPosts = [...posts].sort(
     (a, b) =>
       (Number(b.accurateVotes || 0) + Number(b.inaccurateVotes || 0)) -
       (Number(a.accurateVotes || 0) + Number(a.inaccurateVotes || 0))
@@ -624,7 +643,7 @@ export default function FeedPage() {
         {/* Feed-first at tablet/mobile (order-2 = after main column), a real
             secondary rail only at lg+/desktop (order-1 = back to the left
             column) - pure CSS order, no JS viewport detection. Profile
-            Snapshot / How VeriVerse Works / Verified Highlights / Trending
+            Snapshot / How VeriVerse Works / Evidence Highlights / High Activity
             no longer render ahead of the actual feed below lg. */}
         <div className="order-2 space-y-6 lg:order-1">
           <div className="vv-card vv-surface-accent p-5">
@@ -711,13 +730,13 @@ export default function FeedPage() {
           </div>
 
           <div className="vv-card p-5">
-            <p className="vv-eyebrow mb-3">Community Signal</p>
-            <h2 className="vv-section-title mb-3">Verified Highlights</h2>
+            <p className="vv-eyebrow mb-3">Evidence Signal</p>
+            <h2 className="vv-section-title mb-3">Evidence Highlights</h2>
             <div className="space-y-3">
-              {verifiedPosts.length === 0 ? (
-                <p className="vv-subtitle">No verified posts yet.</p>
+              {evidenceHighlightPosts.length === 0 ? (
+                <p className="vv-subtitle">No evidence highlights yet.</p>
               ) : (
-                verifiedPosts.slice(0, 5).map((post) => (
+                evidenceHighlightPosts.slice(0, 5).map((post) => (
                   <div key={post._id} className="vv-card-soft p-3">
                     <p className="text-sm font-medium text-veriverse-dark">
                       {post.author?.username}
@@ -732,13 +751,13 @@ export default function FeedPage() {
           </div>
 
           <div className="vv-card p-5">
-            <p className="vv-eyebrow mb-3">Momentum</p>
-            <h2 className="vv-section-title mb-3">Trending</h2>
+            <p className="vv-eyebrow mb-3">Engagement</p>
+            <h2 className="vv-section-title mb-3">High Activity</h2>
             <div className="space-y-3">
-              {trendingPosts.length === 0 ? (
-                <p className="vv-subtitle">No trending posts yet.</p>
+              {highActivityPosts.length === 0 ? (
+                <p className="vv-subtitle">No discussion activity yet.</p>
               ) : (
-                trendingPosts.slice(0, 5).map((post) => (
+                highActivityPosts.slice(0, 5).map((post) => (
                   <div key={post._id} className="vv-card-soft p-3">
                     <p className="text-sm font-medium text-veriverse-dark">
                       {post.author?.username}

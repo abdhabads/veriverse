@@ -6,32 +6,7 @@ import { useRouter } from "next/navigation";
 import PageWrapper from "@/components/PageWrapper";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
-import ActionIcon from "@/components/ActionIcons";
-import TrustVerdictBadge from "@/components/TrustVerdictBadge";
-
-type Author = {
-  _id: string;
-  username: string;
-  reputation: number;
-  avatarUrl?: string;
-};
-
-type GroundingSource = {
-  stance: "supports" | "contradicts" | "context" | "unknown";
-};
-
-type Post = {
-  _id: string;
-  content: string;
-  status: string;
-  hashtags?: string[];
-  author: Author;
-  expertDecision?: string;
-  verificationScore?: number | null;
-  contradictionCount?: number;
-  groundingSources?: GroundingSource[];
-  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
-};
+import PostCard, { type Post as PostCardPost } from "@/components/PostCard";
 
 export default function TopicPage({
   params,
@@ -40,7 +15,7 @@ export default function TopicPage({
 }) {
   const router = useRouter();
   const { tag } = use(params);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<PostCardPost[]>([]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -103,63 +78,27 @@ export default function TopicPage({
           />
         ) : (
           posts.map((post) => (
-            <div key={post._id} className="vv-card p-4 sm:p-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+            <div key={post._id}>
+              {(post.hashtags || []).length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {(post.hashtags || []).map((item) => (
                     <button
-                      onClick={() => router.push(`/u/${post.author?.username}`)}
-                      className="font-medium vv-link text-sm"
+                      key={item}
+                      onClick={() => router.push(`/topics/${item}`)}
+                      className={item === tag ? "vv-pill-purple" : "vv-pill-blue"}
                     >
-                      {post.author?.username}
+                      #{item}
                     </button>
-                    <TrustVerdictBadge
-                      status={post.status}
-                      expertDecision={post.expertDecision}
-                      verificationScore={post.verificationScore}
-                      contradictionCount={post.contradictionCount}
-                      groundingSources={post.groundingSources}
-                      contentType={post.contentType}
-                    />
-                  </div>
-
-                  <p className="my-3 text-sm leading-7 text-slate-800 sm:text-[15px]">{post.content}</p>
-
-                  <div className="flex flex-wrap gap-2">
-                    {(post.hashtags || []).map((item) => (
-                      <button
-                        key={item}
-                        onClick={() => router.push(`/topics/${item}`)}
-                        className={item === tag ? "vv-pill-purple" : "vv-pill-blue"}
-                      >
-                        #{item}
-                      </button>
-                    ))}
-                  </div>
+                  ))}
                 </div>
+              )}
 
-                <div className="w-full sm:max-w-xs">
-                  <div className="vv-post-action-cluster">
-                    <p className="vv-post-action-title">Open Verification</p>
-                    <div className="vv-post-action-grid xl:grid-cols-2">
-                      <button
-                        onClick={() => router.push(`/posts/${post._id}`)}
-                        className="vv-post-action-button vv-post-action-strong"
-                      >
-                        <span>View Post</span>
-                        <ActionIcon name="arrowRight" />
-                      </button>
-                      <button
-                        onClick={() => router.push(`/topics/${tag}`)}
-                        className="vv-post-action-button"
-                      >
-                        <span>Stay In Topic</span>
-                        <span>#</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <PostCard
+                variant="profile-compact"
+                post={post}
+                currentUser={null}
+                onNavigateToProfile={(username) => router.push(`/u/${username}`)}
+              />
             </div>
           ))
         )}

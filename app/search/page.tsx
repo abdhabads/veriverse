@@ -7,42 +7,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import EmptyState from "@/components/EmptyState";
 import PageWrapper from "@/components/PageWrapper";
 import Toast from "@/components/Toast";
-import ActionIcon from "@/components/ActionIcons";
-import TrustVerdictBadge from "@/components/TrustVerdictBadge";
+import FollowButton from "@/components/FollowButton";
+import PostCard, { type Post as PostCardPost, type User as PostCardUser } from "@/components/PostCard";
 
-type User = {
+type SearchUser = {
   _id: string;
   username: string;
-  reputation: number;
-  rewardPoints: number;
   avatarUrl?: string;
-  badges?: string[];
   bio?: string;
-};
-
-type Author = {
-  _id: string;
-  username: string;
-  reputation: number;
-  avatarUrl?: string;
-  badges?: string[];
-};
-
-type GroundingSource = {
-  stance: "supports" | "contradicts" | "context" | "unknown";
-};
-
-type Post = {
-  _id: string;
-  content: string;
-  status: string;
-  hashtags?: string[];
-  author: Author;
-  expertDecision?: string;
-  verificationScore?: number | null;
-  contradictionCount?: number;
-  groundingSources?: GroundingSource[];
-  contentType?: "claim" | "question" | "instruction" | "rhetorical_claim";
 };
 
 export default function SearchPage() {
@@ -59,24 +31,27 @@ function SearchPageInner() {
 
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [type, setType] = useState(searchParams.get("type") || "all");
-  const [users, setUsers] = useState<User[]>([]);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [users, setUsers] = useState<SearchUser[]>([]);
+  const [posts, setPosts] = useState<PostCardPost[]>([]);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<PostCardUser | null>(null);
   const [followState, setFollowState] = useState<Record<string, boolean>>({});
-  const [followBusy, setFollowBusy] = useState<Record<string, boolean>>({});
   const [messageBusy, setMessageBusy] = useState<Record<string, boolean>>({});
   // Guards the follow-state batch fetch against an older response (from a
   // prior search) overwriting a newer one if the user searches again quickly.
   const followStateSeqRef = useRef(0);
 
+  const currentUserId = currentUser?._id;
+  const hasQuery = Boolean(searchParams.get("q"));
+
   useEffect(() => {
     axios
       .get("/api/me")
-      .then((res) => setCurrentUserId(res.data?.user?._id || null))
-      .catch(() => setCurrentUserId(null));
+      .then((res) => setCurrentUser(res.data?.user || null))
+      .catch(() => setCurrentUser(null));
   }, []);
 
   useEffect(() => {
@@ -104,23 +79,6 @@ function SearchPageInner() {
       });
   }, [users, currentUserId]);
 
-  const toggleFollow = async (targetUserId: string) => {
-    if (followBusy[targetUserId]) return;
-    setFollowBusy((prev) => ({ ...prev, [targetUserId]: true }));
-    try {
-      const res = await axios.post("/api/follow", { targetUserId });
-      setFollowState((prev) => ({ ...prev, [targetUserId]: Boolean(res.data?.following) }));
-    } catch (error: unknown) {
-      if (axios.isAxiosError(error)) {
-        setMessage(error.response?.data?.message || "Failed to update follow status");
-      } else {
-        setMessage("Failed to update follow status");
-      }
-    } finally {
-      setFollowBusy((prev) => ({ ...prev, [targetUserId]: false }));
-    }
-  };
-
   const openConversation = async (targetUserId: string) => {
     if (messageBusy[targetUserId]) return;
     setMessageBusy((prev) => ({ ...prev, [targetUserId]: true }));
@@ -142,43 +100,46 @@ function SearchPageInner() {
     const t = searchParams.get("type") || "all";
     let cancelled = false;
 
-    queueMicrotask(() => {
-      setQuery(q);
-      setType(t);
+    setQuery(q);
+    setType(t);
 
-      if (!q) {
-        setUsers([]);
-        setPosts([]);
-        setHashtags([]);
-      }
-    });
-
-    if (q) {
-      axios
-        .get(`/api/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(t)}`)
-        .then((res) => {
-          if (cancelled) {
-            return;
-          }
-
-          setUsers(res.data.users || []);
-          setPosts(res.data.posts || []);
-          setHashtags(res.data.hashtags || []);
-          setMessage("");
-        })
-        .catch((error: unknown) => {
-          if (cancelled) {
-            return;
-          }
-
-          if (axios.isAxiosError(error)) {
-            setMessage(error.response?.data?.message || "Search failed");
-            return;
-          }
-
-          setMessage("Search failed");
-        });
+    if (!q) {
+      setUsers([]);
+      setPosts([]);
+      setHashtags([]);
+      setLoading(false);
+      return;
     }
+
+    setLoading(true);
+
+    axios
+      .get(`/api/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(t)}`)
+      .then((res) => {
+        if (cancelled) {
+          return;
+        }
+
+        setUsers(res.data.users || []);
+        setPosts(res.data.posts || []);
+        setHashtags(res.data.hashtags || []);
+        setMessage("");
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (axios.isAxiosError(error)) {
+          setMessage(error.response?.data?.message || "Search failed");
+          return;
+        }
+
+        setMessage("Search failed");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
       cancelled = true;
@@ -186,203 +147,197 @@ function SearchPageInner() {
   }, [searchParams]);
 
   const submitSearch = () => {
+    if (loading) return;
     router.push(`/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}`);
   };
+
+  const showUsers = type === "all" || type === "users";
+  const showPosts = type === "all" || type === "posts";
+  const showTopics = type === "all" || type === "topics";
 
   return (
     <PageWrapper
       title="Search"
       subtitle="Find people, claims, and topics, then move directly into the verification surfaces without dropping context."
     >
-      <div className="vv-card p-4 sm:p-5 mb-6">
+      <form
+        className="vv-card p-4 sm:p-5 mb-6"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitSearch();
+        }}
+      >
         <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
           <input
             className="vv-input flex-1"
             placeholder="Search users, posts, or topics"
+            aria-label="Search users, posts, or topics"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
 
           <select
             className="vv-select w-full lg:w-[180px]"
+            aria-label="Result type"
             value={type}
             onChange={(e) => setType(e.target.value)}
           >
             <option value="all">All</option>
             <option value="users">Users</option>
             <option value="posts">Posts</option>
+            <option value="topics">Topics</option>
           </select>
 
           <button
-            onClick={submitSearch}
+            type="submit"
+            disabled={loading}
             className="vv-btn-primary w-full lg:w-auto"
           >
-            Search
+            {loading ? "Searching…" : "Search"}
           </button>
         </div>
-      </div>
+      </form>
 
       {message && <Toast message={message} type="error" />}
 
-      {hashtags.length > 0 && (
-        <div className="vv-post-panel-accent mb-6">
-          <h3 className="vv-section-title mb-3">Topics</h3>
-          <div className="flex flex-wrap gap-2">
-            {hashtags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => router.push(`/topics/${tag}`)}
-                className="vv-pill-purple"
-              >
-                #{tag}
-              </button>
-            ))}
-          </div>
+      {!hasQuery ? (
+        <div className="vv-card p-8 text-center">
+          <h3 className="vv-section-title mb-2">Search VeriVerse</h3>
+          <p className="text-sm text-slate-600">Find people, claims, posts, and topics.</p>
         </div>
-      )}
-
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="vv-card p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h3 className="vv-section-title">Users</h3>
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{users.length} results</p>
-          </div>
-
-          {users.length === 0 ? (
-            <EmptyState title="No users found" description="Try a broader name, handle, or search across all result types." />
-          ) : (
-            <div className="space-y-3">
-              {users.map((user) => (
-                <div key={user._id} className="vv-post-panel">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0 flex-1">
-                      {user.avatarUrl ? (
-                        <Image
-                          src={user.avatarUrl}
-                          alt={user.username}
-                          width={40}
-                          height={40}
-                          unoptimized
-                          className="h-10 w-10 rounded-full object-cover border"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
-                          {user.username.slice(0, 1).toUpperCase()}
-                        </div>
-                      )}
-
-                      <div className="min-w-0 flex-1">
-                        <button
-                          onClick={() => router.push(`/u/${user.username}`)}
-                          className="font-semibold vv-link text-sm"
-                        >
-                          {user.username}
-                        </button>
-                        <p className="vv-subtitle mt-1">
-                          Reputation: {user.reputation} • Rewards: {user.rewardPoints}
-                        </p>
-                        {user.bio && <p className="text-sm text-slate-700 mt-3 leading-6">{user.bio}</p>}
-                      </div>
-                    </div>
-
-                    {currentUserId && user._id !== currentUserId && (
-                      <div className="flex flex-col items-end gap-2">
-                        <button
-                          type="button"
-                          data-testid={`search-follow-${user.username}`}
-                          onClick={() => toggleFollow(user._id)}
-                          disabled={Boolean(followBusy[user._id])}
-                          className={followState[user._id] ? "vv-btn-secondary" : "vv-btn-primary"}
-                        >
-                          {followState[user._id] ? "Following" : "Follow"}
-                        </button>
-                        <button
-                          type="button"
-                          data-testid={`search-message-${user.username}`}
-                          onClick={() => openConversation(user._id)}
-                          disabled={Boolean(messageBusy[user._id])}
-                          className="vv-btn-secondary"
-                        >
-                          {messageBusy[user._id] ? "Opening..." : "Message"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+      ) : (
+        <>
+          {showTopics && hashtags.length > 0 && (
+            <div className="vv-post-panel-accent mb-6">
+              <h3 className="vv-section-title mb-3">Topics</h3>
+              <div className="flex flex-wrap gap-2">
+                {hashtags.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => router.push(`/topics/${tag}`)}
+                    className="vv-pill-purple"
+                  >
+                    #{tag}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-        </div>
 
-        <div className="vv-card p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h3 className="vv-section-title">Posts</h3>
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{posts.length} results</p>
-          </div>
+          <div className={showUsers && showPosts ? "grid gap-6 xl:grid-cols-[0.95fr_1.05fr]" : "space-y-6"}>
+            {showUsers && (
+              <div className="vv-card p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <h3 className="vv-section-title">Users</h3>
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{users.length} results</p>
+                </div>
 
-          {posts.length === 0 ? (
-            <EmptyState title="No posts found" description="Try different wording or open the topic suggestions above to narrow the claim set." />
-          ) : (
-            <div className="space-y-3">
-              {posts.map((post) => (
-                <div key={post._id} className="vv-post-panel-accent">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <button
-                      onClick={() => router.push(`/u/${post.author?.username}`)}
-                      className="font-medium vv-link text-sm"
-                    >
-                      {post.author?.username}
-                    </button>
-                    <TrustVerdictBadge
-                      status={post.status}
-                      expertDecision={post.expertDecision}
-                      verificationScore={post.verificationScore}
-                      contradictionCount={post.contradictionCount}
-                      groundingSources={post.groundingSources}
-                      contentType={post.contentType}
-                    />
-                  </div>
+                {users.length === 0 ? (
+                  <EmptyState title="No users found" description="Try a broader name, handle, or search across all result types." />
+                ) : (
+                  <div className="space-y-3">
+                    {users.map((user) => (
+                      <div key={user._id} className="vv-post-panel flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          {user.avatarUrl ? (
+                            <Image
+                              src={user.avatarUrl}
+                              alt={user.username}
+                              width={40}
+                              height={40}
+                              unoptimized
+                              className="h-10 w-10 rounded-full object-cover border"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
+                              {user.username.slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
 
-                  <p className="text-sm text-slate-700 my-3 leading-7">{post.content}</p>
+                          <div className="min-w-0 flex-1">
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/u/${user.username}`)}
+                              className="font-semibold vv-link text-sm"
+                            >
+                              {user.username}
+                            </button>
+                            {user.bio && <p className="text-xs text-slate-500 mt-1 leading-5">{user.bio}</p>}
+                          </div>
+                        </div>
 
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {(post.hashtags || []).map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => router.push(`/topics/${tag}`)}
-                        className="vv-pill-blue"
-                      >
-                        #{tag}
-                      </button>
+                        {currentUserId && user._id !== currentUserId && (
+                          <div className="flex flex-col items-end gap-2">
+                            <FollowButton
+                              targetUserId={user._id}
+                              isFollowing={Boolean(followState[user._id])}
+                              onChange={(following) =>
+                                setFollowState((prev) => ({ ...prev, [user._id]: following }))
+                              }
+                              onError={setMessage}
+                              testId={`search-follow-${user.username}`}
+                            />
+                            <button
+                              type="button"
+                              data-testid={`search-message-${user.username}`}
+                              onClick={() => openConversation(user._id)}
+                              disabled={Boolean(messageBusy[user._id])}
+                              className="vv-btn-secondary text-xs px-2 py-1"
+                            >
+                              {messageBusy[user._id] ? "Opening..." : "Message"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
+                )}
+              </div>
+            )}
 
-                  <div className="vv-post-action-cluster">
-                    <p className="vv-post-action-title">Verification Path</p>
-                    <div className="vv-post-action-grid xl:grid-cols-2">
-                      <button
-                        onClick={() => router.push(`/posts/${post._id}`)}
-                        className="vv-post-action-button vv-post-action-strong"
-                      >
-                        <span>View Post</span>
-                        <ActionIcon name="arrowRight" />
-                      </button>
-                      <button
-                        onClick={() => router.push(`/topics/${post.hashtags?.[0] || ""}`)}
-                        disabled={!post.hashtags?.length}
-                        className="vv-post-action-button"
-                      >
-                        <span>Open Topic</span>
-                        <span>#</span>
-                      </button>
-                    </div>
-                  </div>
+            {showPosts && (
+              <div className="vv-card p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <h3 className="vv-section-title">Posts</h3>
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{posts.length} results</p>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+
+                {posts.length === 0 ? (
+                  <EmptyState title="No posts found" description="Try different wording or open the topic suggestions above to narrow the claim set." />
+                ) : (
+                  <div className="space-y-3">
+                    {posts.map((post) => (
+                      <div key={post._id}>
+                        {(post.hashtags || []).length > 0 && (
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            {(post.hashtags || []).map((tag) => (
+                              <button
+                                key={tag}
+                                onClick={() => router.push(`/topics/${tag}`)}
+                                className="vv-pill-blue"
+                              >
+                                #{tag}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        <PostCard
+                          variant="profile-compact"
+                          post={post}
+                          currentUser={currentUser}
+                          currentUserId={currentUserId}
+                          onNavigateToProfile={(username) => router.push(`/u/${username}`)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </PageWrapper>
   );
 }

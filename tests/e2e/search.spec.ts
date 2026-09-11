@@ -37,11 +37,16 @@ test("ordinary user can discover Search from navigation, search, and reach a pro
   const postResult = page.getByText("The local clinic opens at 8am tomorrow.");
   await expect(postResult).toBeVisible({ timeout: 10_000 });
 
-  // Existing trust verdict presentation still renders on the result.
+  // Existing trust verdict presentation still renders on the result -
+  // P2.7 consolidated Search's post rendering onto the same PostCard
+  // (profile-compact) presentation used elsewhere, so this is now the
+  // canonical TrustSummaryLine pill, not a bespoke Search-only badge.
   await expect(page.locator(".vv-verdict-pill").first()).toBeVisible();
 
-  // Clicking through to the full post still works.
-  await page.getByRole("button", { name: "View Post" }).first().click();
+  // Clicking through to the full post still works - PostCard's own
+  // "View full analysis" link (the same wording used on profile pages),
+  // not a Search-specific "View Post" button.
+  await page.getByRole("link", { name: /view full analysis/i }).first().click();
   await expect(page).toHaveURL(/\/posts\//);
 });
 
