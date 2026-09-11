@@ -41,15 +41,34 @@ test.beforeEach(async () => {
   await mongoose.disconnect();
 });
 
+// P2.5: Block/Mute moved from top-level buttons into a "More" safety
+// overflow (ProfileSafetyMenu) so Block's danger styling no longer
+// dominates the profile header next to Follow/Message. These helpers open
+// that menu the same way a real user would before locating the action -
+// the frozen P1.9 semantics being asserted below are otherwise unchanged.
+// Idempotent "ensure open" rather than a blind toggle-click: the trigger
+// toggles open/closed, and unblocking (unlike blocking) has no confirm
+// dialog in between to close the menu as a side effect - so a second
+// blind click after an unblock would close an already-open menu instead
+// of opening it.
+async function openSafetyMenu(page: import("@playwright/test").Page) {
+  const menu = page.getByRole("menu");
+  if (await menu.isVisible().catch(() => false)) return;
+  await page.getByRole("button", { name: /safety options/i }).click();
+  await expect(menu).toBeVisible();
+}
+
 test("public profile exposes Block and Mute to another viewer, never on your own profile", async ({ page }) => {
   await login(page, "huxa@test.com", "Password123!");
 
   await page.goto("/u/huxb");
+  await openSafetyMenu(page);
   await expect(page.getByTestId("block-toggle")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId("mute-toggle")).toBeVisible();
 
   await page.goto("/u/huxa");
-  await expect(page.getByTestId("block-toggle")).not.toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: /safety options/i })).not.toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("block-toggle")).not.toBeVisible();
   await expect(page.getByTestId("mute-toggle")).not.toBeVisible();
 });
 
@@ -66,9 +85,14 @@ test("blocking from the profile page clears visible Follow/Message and creates t
   await expect(page.getByTestId("follow-toggle")).toHaveText(/Following/, { timeout: 10_000 });
   await expect(page.getByTestId("message-button")).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
+  await openSafetyMenu(page);
   await page.getByTestId("block-toggle").click();
 
+  const dialog = page.getByRole("dialog", { name: "Block this user?" });
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  await dialog.getByRole("button", { name: "Block" }).click();
+
+  await openSafetyMenu(page);
   await expect(page.getByTestId("block-toggle")).toHaveText(/Unblock/, { timeout: 10_000 });
   await expect(page.getByTestId("follow-toggle")).not.toBeVisible();
   await expect(page.getByTestId("message-button")).not.toBeVisible();
@@ -93,11 +117,18 @@ test("unblocking restores the Follow control but does not recreate the Follow re
   await login(page, "huxa@test.com", "Password123!");
   await page.goto("/u/huxb");
 
-  page.once("dialog", (dialog) => dialog.accept());
+  await openSafetyMenu(page);
   await page.getByTestId("block-toggle").click();
+  const dialog = page.getByRole("dialog", { name: "Block this user?" });
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  await dialog.getByRole("button", { name: "Block" }).click();
+
+  await openSafetyMenu(page);
   await expect(page.getByTestId("block-toggle")).toHaveText(/Unblock/, { timeout: 10_000 });
 
+  // Unblock has no confirmation step (only blocking does) - a direct click.
   await page.getByTestId("block-toggle").click();
+  await openSafetyMenu(page);
   await expect(page.getByTestId("block-toggle")).toHaveText(/^Block$/, { timeout: 10_000 });
 
   await expect(page.getByTestId("follow-toggle")).toBeVisible();
@@ -113,20 +144,20 @@ test("the Block confirmation discloses interaction restriction and non-restoring
   await login(page, "huxa@test.com", "Password123!");
   await page.goto("/u/huxb");
 
-  let dialogMessage = "";
-  page.once("dialog", (dialog) => {
-    dialogMessage = dialog.message();
-    dialog.dismiss();
-  });
-
+  await openSafetyMenu(page);
   await page.getByTestId("block-toggle").click();
-  await expect.poll(() => dialogMessage).not.toBe("");
 
-  const normalized = dialogMessage.toLowerCase();
-  expect(normalized).toContain("follow relationship");
-  expect(normalized).toContain("unblocking");
-  expect(normalized).toContain("won't restore");
-  expect(normalized).toContain("message");
-  expect(normalized).toContain("comment");
-  expect(normalized).toContain("repost");
+  const dialog = page.getByRole("dialog", { name: "Block this user?" });
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  const dialogText = ((await dialog.textContent()) || "").toLowerCase();
+
+  expect(dialogText).toContain("follow relationship");
+  expect(dialogText).toContain("unblocking");
+  expect(dialogText).toContain("won't restore");
+  expect(dialogText).toContain("message");
+  expect(dialogText).toContain("comment");
+  expect(dialogText).toContain("repost");
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).not.toBeVisible();
 });

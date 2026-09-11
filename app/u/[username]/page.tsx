@@ -4,9 +4,15 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import PageWrapper from "@/components/PageWrapper";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import EmptyState from "@/components/EmptyState";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ProfileHeader from "@/components/ProfileHeader";
+import ProfileStats from "@/components/ProfileStats";
+import ProfileSafetyMenu from "@/components/ProfileSafetyMenu";
+import FollowButton from "@/components/FollowButton";
 import PostCard, { type Post as PostCardPost } from "@/components/PostCard";
 import { api, getErrorMessage } from "@/lib/apiClient";
-import ReputationInfo from "@/components/ReputationInfo";
 import { fetchMySafetyRelations, toggleSafetyRelation } from "@/lib/profileTrustClient";
 
 const BLOCK_CONFIRM_MESSAGE =
@@ -21,10 +27,6 @@ type User = {
   rewardPoints: number;
   avatarUrl?: string;
   badges?: string[];
-  // Already present on the /api/me response this page already fetches
-  // (same shape used everywhere else); only the type declaration was
-  // missing, needed so the viewer's role can reach PostCard's canEngage
-  // check for profile-compact's Endorse/Oppose.
   role?: string;
 };
 
@@ -50,16 +52,18 @@ export default function PublicProfilePage({
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [message, setMessage] = useState("");
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentUserChecked, setCurrentUserChecked] = useState(false);
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [followsYou, setFollowsYou] = useState(false);
-  const [followBusy, setFollowBusy] = useState(false);
   const [messageBusy, setMessageBusy] = useState(false);
   const [followCounts, setFollowCounts] = useState<{ followers: number; following: number } | null>(null);
   const [relations, setRelations] = useState<Relation[]>([]);
   const [relationBusy, setRelationBusy] = useState(false);
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
   const [reportReasons, setReportReasons] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -112,7 +116,10 @@ export default function PublicProfilePage({
       setUser(res.data.user);
       setPosts(res.data.posts || []);
     } catch (error: any) {
+      setNotFound(true);
       setMessage(error?.response?.data?.message || "Failed to load public profile");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -125,19 +132,6 @@ export default function PublicProfilePage({
       setCurrentUser(null);
     } finally {
       setCurrentUserChecked(true);
-    }
-  };
-
-  const toggleFollow = async () => {
-    if (!user || followBusy) return;
-    setFollowBusy(true);
-    try {
-      const res = await api.post("/follow", { targetUserId: user._id });
-      setIsFollowing(Boolean(res.data.following));
-    } catch (error: any) {
-      setMessage(getErrorMessage(error, "Failed to update follow status"));
-    } finally {
-      setFollowBusy(false);
     }
   };
 
@@ -167,10 +161,6 @@ export default function PublicProfilePage({
   const toggleRelation = async (relationType: "block" | "mute") => {
     if (!user || relationBusy) return;
     const alreadyActive = relationType === "block" ? isBlocked : isMuted;
-
-    if (relationType === "block" && !alreadyActive && !window.confirm(BLOCK_CONFIRM_MESSAGE)) {
-      return;
-    }
 
     setRelationBusy(true);
     try {
@@ -214,6 +204,14 @@ export default function PublicProfilePage({
     }
   };
 
+  const handleBlockToggleClick = () => {
+    if (isBlocked) {
+      void toggleRelation("block");
+    } else {
+      setBlockConfirmOpen(true);
+    }
+  };
+
   const votePost = async (postId: string, voteType: "accurate" | "inaccurate") => {
     try {
       const res = await api.post(`/posts/${postId}/vote`, { voteType });
@@ -236,69 +234,38 @@ export default function PublicProfilePage({
     }
   };
 
+  const isViewingOwnProfile = Boolean(currentUser) && Boolean(user) && String(currentUser?._id) === String(user?._id);
+
   return (
     <PageWrapper title="Public Profile" subtitle="See a contributor's reputation, badges, and published claims.">
       {message && <div className="vv-banner mb-4">{message}</div>}
 
-      {user && (
-        <div className="vv-card p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 mb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-5">
-              {user.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={user.username}
-                  className="w-16 h-16 rounded-full object-cover border border-veriverse-border"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-full bg-veriverse-slate border border-veriverse-border flex items-center justify-center text-sm text-veriverse-dark/60">
-                  {user.username.slice(0, 1).toUpperCase()}
-                </div>
-              )}
-
-              <div>
-                <h3 className="text-2xl font-semibold">{user.username}</h3>
-                <p className="vv-subtitle">Reputation: {user.reputation}</p>
-                <ReputationInfo className="mt-1" />
-                <p className="vv-subtitle">Reward Points: {user.rewardPoints}</p>
-                {followCounts && (
-                  <p className="vv-subtitle mt-1">
-                    <button
-                      type="button"
-                      data-testid="followers-count-link"
-                      onClick={() => router.push(`/u/${user.username}/followers`)}
-                      className="vv-link"
-                    >
-                      {followCounts.followers} Followers
-                    </button>
-                    {" · "}
-                    <button
-                      type="button"
-                      data-testid="following-count-link"
-                      onClick={() => router.push(`/u/${user.username}/following`)}
-                      className="vv-link"
-                    >
-                      {followCounts.following} Following
-                    </button>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {currentUserChecked &&
-              currentUser &&
-              String(currentUser._id) !== String(user._id) && (
-                <div className="flex items-center gap-2 flex-wrap">
+      {loading ? (
+        <LoadingSpinner label="Loading profile..." />
+      ) : !user ? (
+        <EmptyState title="Profile not found" description={notFound ? "This user could not be found." : undefined} />
+      ) : (
+        <div className="space-y-6">
+          <ProfileHeader
+            username={user.username}
+            avatarUrl={user.avatarUrl}
+            bio={user.bio}
+            bioFallback="This user has not added a bio yet."
+            followerCount={followCounts?.followers}
+            followingCount={followCounts?.following}
+            onFollowersClick={() => router.push(`/u/${user.username}/followers`)}
+            onFollowingClick={() => router.push(`/u/${user.username}/following`)}
+            actions={
+              currentUserChecked && currentUser && !isViewingOwnProfile ? (
+                <>
                   {!isBlocked && isFollowing !== null && (
-                    <button
-                      type="button"
-                      data-testid="follow-toggle"
-                      onClick={toggleFollow}
-                      disabled={followBusy}
-                      className={isFollowing ? "vv-btn-secondary" : "vv-btn-primary"}
-                    >
-                      {isFollowing ? "Following" : "Follow"}
-                    </button>
+                    <FollowButton
+                      targetUserId={user._id}
+                      isFollowing={isFollowing}
+                      onChange={setIsFollowing}
+                      onError={setMessage}
+                      testId="follow-toggle"
+                    />
                   )}
                   {!isBlocked && followsYou && (
                     <span data-testid="follows-you-pill" className="vv-pill-gray">
@@ -316,95 +283,95 @@ export default function PublicProfilePage({
                       {messageBusy ? "Opening..." : "Message"}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    data-testid="block-toggle"
-                    onClick={() => toggleRelation("block")}
-                    disabled={relationBusy}
-                    className="vv-btn-danger"
-                  >
-                    {relationBusy ? "Working..." : isBlocked ? "Unblock" : "Block"}
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="mute-toggle"
-                    onClick={() => toggleRelation("mute")}
-                    disabled={relationBusy}
-                    className="vv-btn-secondary"
-                  >
-                    {relationBusy ? "Working..." : isMuted ? "Unmute" : "Mute"}
-                  </button>
-                </div>
-              )}
-          </div>
+                  <ProfileSafetyMenu label={`Safety options for ${user.username}`}>
+                    <button
+                      type="button"
+                      data-testid="block-toggle"
+                      onClick={handleBlockToggleClick}
+                      disabled={relationBusy}
+                      className="vv-post-menu-item vv-post-menu-item-danger w-full"
+                    >
+                      {relationBusy ? "Working..." : isBlocked ? "Unblock" : "Block"}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="mute-toggle"
+                      onClick={() => toggleRelation("mute")}
+                      disabled={relationBusy}
+                      className="vv-post-menu-item w-full"
+                    >
+                      {relationBusy ? "Working..." : isMuted ? "Unmute" : "Mute"}
+                    </button>
+                  </ProfileSafetyMenu>
+                </>
+              ) : undefined
+            }
+          />
 
-          <div className="vv-post-panel mb-4">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-veriverse-dark/50">
-              Bio
-            </p>
-            {user.bio ? (
-              <p className="text-sm leading-6 text-slate-700 whitespace-pre-wrap">{user.bio}</p>
-            ) : (
-              <p className="text-sm text-slate-500">This user has not added a bio yet.</p>
-            )}
-          </div>
+          <ProfileStats
+            reputation={user.reputation}
+            rewardPoints={user.rewardPoints}
+            badges={user.badges || []}
+          />
 
-          <div className="flex flex-wrap gap-2">
-            {(user.badges || []).length === 0 ? (
-              <span className="vv-subtitle">No badges yet</span>
+          <div className="vv-card p-6">
+            <h3 className="vv-section-title mb-4">Posts</h3>
+
+            {posts.length === 0 ? (
+              <EmptyState title="No public posts found" />
             ) : (
-              user.badges?.map((badge) => (
-                <span key={badge} className="vv-pill-blue">{badge}</span>
-              ))
+              <div className="space-y-4">
+                {posts.map((post) => {
+                  const authoredPost: PostCardPost = {
+                    ...post,
+                    author: post.author ?? {
+                      _id: user._id,
+                      username: user.username,
+                      avatarUrl: user.avatarUrl,
+                      reputation: user.reputation,
+                    },
+                  };
+
+                  return (
+                    <PostCard
+                      key={post._id}
+                      variant="profile-compact"
+                      post={authoredPost}
+                      currentUser={
+                        currentUser
+                          ? { _id: currentUser._id, username: currentUser.username, role: currentUser.role }
+                          : null
+                      }
+                      currentUserId={currentUser?._id}
+                      onVote={votePost}
+                      onReport={
+                        currentUserChecked && !isViewingOwnProfile ? (postId) => reportPost(postId) : undefined
+                      }
+                      reportReason={reportReasons[post._id] || "other"}
+                      onReportReasonChange={(postId, reason) =>
+                        setReportReasons((prev) => ({ ...prev, [postId]: reason }))
+                      }
+                    />
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
       )}
 
-      <div className="vv-card p-6">
-        <h3 className="vv-section-title mb-4">Posts</h3>
-
-        {posts.length === 0 ? (
-          <p className="vv-subtitle">No public posts found.</p>
-        ) : (
-          <div className="space-y-4">
-            {posts.map((post) => {
-              const isViewingOwnPosts = Boolean(currentUser) && String(currentUser?._id) === String(user?._id);
-              const authoredPost: PostCardPost = {
-                ...post,
-                author: post.author ?? {
-                  _id: user?._id || "",
-                  username: user?.username || "",
-                  avatarUrl: user?.avatarUrl,
-                  reputation: user?.reputation,
-                },
-              };
-
-              return (
-                <PostCard
-                  key={post._id}
-                  variant="profile-compact"
-                  post={authoredPost}
-                  currentUser={
-                    currentUser
-                      ? { _id: currentUser._id, username: currentUser.username, role: currentUser.role }
-                      : null
-                  }
-                  currentUserId={currentUser?._id}
-                  onVote={votePost}
-                  onReport={
-                    currentUserChecked && !isViewingOwnPosts ? (postId) => reportPost(postId) : undefined
-                  }
-                  reportReason={reportReasons[post._id] || "other"}
-                  onReportReasonChange={(postId, reason) =>
-                    setReportReasons((prev) => ({ ...prev, [postId]: reason }))
-                  }
-                />
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <ConfirmDialog
+        open={blockConfirmOpen}
+        title="Block this user?"
+        description={BLOCK_CONFIRM_MESSAGE}
+        confirmLabel="Block"
+        destructive
+        onCancel={() => setBlockConfirmOpen(false)}
+        onConfirm={async () => {
+          await toggleRelation("block");
+          setBlockConfirmOpen(false);
+        }}
+      />
     </PageWrapper>
   );
 }
