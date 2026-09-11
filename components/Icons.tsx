@@ -317,3 +317,75 @@ export function TrustIcon({ name, ...props }: IconProps & { name: TrustIconName 
   const Icon = TRUST_ICONS[name];
   return <Icon {...props} />;
 }
+
+// ---- Shell/nav icon set (P2.2) - default size 18 ----
+
+export type ShellIconName = "home" | "search" | "bell" | "mail" | "user" | "plus";
+
+function HomeIcon({ size = 18, ...rest }: IconProps) {
+  return (
+    <Svg size={size} {...rest}>
+      <path d="M4 11L12 4L20 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 9.5V19C6 19.55 6.45 20 7 20H17C17.55 20 18 19.55 18 19V9.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 20V14H14V20" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function ShellSearchIcon({ size = 18, ...rest }: IconProps) {
+  return (
+    <Svg size={size} {...rest}>
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M21 21L16.5 16.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function BellIcon({ size = 18, ...rest }: IconProps) {
+  return (
+    <Svg size={size} {...rest}>
+      <path d="M6 10C6 6.69 8.69 4 12 4C15.31 4 18 6.69 18 10V14L20 17H4L6 14V10Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M9.5 20C9.8 20.85 10.83 21.5 12 21.5C13.17 21.5 14.2 20.85 14.5 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function MailIcon({ size = 18, ...rest }: IconProps) {
+  return (
+    <Svg size={size} {...rest}>
+      <rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M4 6.5L12 13L20 6.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function UserIcon({ size = 18, ...rest }: IconProps) {
+  return (
+    <Svg size={size} {...rest}>
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M4 21C4 16.86 7.58 13.5 12 13.5C16.42 13.5 20 16.86 20 21" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function PlusIcon({ size = 18, ...rest }: IconProps) {
+  return (
+    <Svg size={size} {...rest}>
+      <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+const SHELL_ICONS: Record<ShellIconName, (props: IconProps) => ReactElement> = {
+  home: HomeIcon,
+  search: ShellSearchIcon,
+  bell: BellIcon,
+  mail: MailIcon,
+  user: UserIcon,
+  plus: PlusIcon,
+};
+
+export function ShellIcon({ name, ...props }: IconProps & { name: ShellIconName }) {
+  const Icon = SHELL_ICONS[name];
+  return <Icon {...props} />;
+}

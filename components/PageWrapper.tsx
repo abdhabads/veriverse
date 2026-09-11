@@ -1,5 +1,3 @@
-import Navbar from "./Navbar";
-
 export default function PageWrapper({
   title,
   subtitle,
@@ -11,8 +9,6 @@ export default function PageWrapper({
 }) {
   return (
     <div className="vv-page">
-      <Navbar />
-
       <div className="vv-container">
         {(title || subtitle) && (
           <div className="vv-hero">
