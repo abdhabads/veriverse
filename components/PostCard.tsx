@@ -116,7 +116,10 @@ export type Post = {
 
 export type PostCardVariant = "feed" | "detail" | "profile-compact";
 
-function formatRelativeTime(createdAt?: string) {
+// Exported so P2.6's comment components can reuse the same relative-time
+// presentation posts already use, rather than the comment surface keeping
+// its own raw `toLocaleString()` formatting (the P2.6 audit's finding).
+export function formatRelativeTime(createdAt?: string) {
   if (!createdAt) {
     return "Just now";
   }
@@ -213,19 +216,17 @@ type PostCardProps = {
   reportReason?: string;
   onReportReasonChange?: (postId: string, reason: string) => void;
 
-  // Comments. variant="feed": existing dual mobile-link/desktop-toggle
-  // inline panel, parent-controlled exactly as before. variant="detail":
-  // a static (non-interactive) count - the real thread lives below on the
-  // same page, owned entirely by that page, untouched by this component.
-  // variant="profile-compact": no comment affordance here at all - the
-  // "View full analysis" link is the route to the real thread.
-  isCommentsExpanded?: boolean;
-  onToggleComments?: (postId: string) => void;
+  // Comments. variant="feed": a single compact affordance (icon + flat
+  // total count when known) that always navigates to the post detail page -
+  // P2.6 retired the desktop-only inline flat comment panel this used to
+  // expand in place, since it rendered replies with no thread context,
+  // making a reply look like a top-level response to the post.
+  // variant="detail": a static (non-interactive) count - the real
+  // threaded discussion lives below on the same page, owned entirely by
+  // that page, untouched by this component. variant="profile-compact": no
+  // comment affordance here at all - the "View full analysis" link is the
+  // route to the real thread.
   comments?: Comment[];
-  commentInput?: string;
-  onCommentInputChange?: (postId: string, value: string) => void;
-  onAddComment?: (postId: string) => void;
-  onLoadComments?: (postId: string) => void;
 
   // Navigation.
   onNavigateToProfile?: (username: string) => void;
@@ -331,13 +332,7 @@ export default function PostCard({
   onReport,
   reportReason = "other",
   onReportReasonChange,
-  isCommentsExpanded = false,
-  onToggleComments,
   comments,
-  commentInput = "",
-  onCommentInputChange,
-  onAddComment,
-  onLoadComments,
   onNavigateToProfile,
 }: PostCardProps) {
   const [shareFeedback, setShareFeedback] = useState("");
@@ -597,28 +592,15 @@ export default function PostCard({
           )}
 
           {variant === "feed" && (
-            <>
-              <Link
-                href={`/posts/${post._id}`}
-                className={`vv-post-action-button sm:hidden ${FOCUS_RING}`}
-              >
-                <span className="flex items-center gap-1.5">
-                  <span aria-hidden="true">💬</span>
-                </span>
-              </Link>
-              <button
-                type="button"
-                onClick={() => onToggleComments?.(post._id)}
-                aria-expanded={isCommentsExpanded}
-                aria-controls={`comments-panel-${post._id}`}
-                className={`vv-post-action-button hidden sm:inline-flex ${FOCUS_RING}`}
-              >
-                <span className="flex items-center gap-1.5">
-                  <span aria-hidden="true">💬</span>
-                  <span className="hidden sm:inline">{formatCommentCountLabel(comments)}</span>
-                </span>
-              </button>
-            </>
+            <Link
+              href={`/posts/${post._id}`}
+              className={`vv-post-action-button ${FOCUS_RING}`}
+            >
+              <span className="flex items-center gap-1.5">
+                <span aria-hidden="true">💬</span>
+                <span className="hidden sm:inline">{formatCommentCountLabel(comments)}</span>
+              </span>
+            </Link>
           )}
 
           {variant === "detail" && (
@@ -815,48 +797,6 @@ export default function PostCard({
                 </button>
               )}
             </PostOverflowMenu>
-          )}
-        </div>
-      )}
-
-      {variant === "feed" && (
-        <div className="vv-divider pt-4">
-          {isCommentsExpanded && (
-            <div id={`comments-panel-${post._id}`} className="hidden sm:block">
-              <div className="vv-post-comment-shell">
-                <div className="mb-4 flex flex-col gap-2 sm:flex-row">
-                  <input
-                    className="vv-input flex-1"
-                    placeholder="Add a comment"
-                    aria-label={`Add a comment to post by ${post.author?.username}`}
-                    value={commentInput}
-                    onChange={(e) => onCommentInputChange?.(post._id, e.target.value)}
-                  />
-                  <button onClick={() => onAddComment?.(post._id)} className="vv-btn-accent">
-                    Send
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  {!comments ? (
-                    <button onClick={() => onLoadComments?.(post._id)} className="vv-btn-secondary">
-                      Load Comments
-                    </button>
-                  ) : (
-                    <div className="space-y-3">
-                      {comments.map((comment) => (
-                        <div key={comment._id} className="vv-post-comment-thread">
-                          <p className="mb-1 text-sm font-medium text-veriverse-dark">
-                            {comment.author?.username}
-                          </p>
-                          <p className="text-sm leading-6 text-slate-700">{comment.content}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
           )}
         </div>
       )}

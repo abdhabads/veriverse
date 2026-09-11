@@ -2,27 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import EmptyState from "@/components/EmptyState";
 import PageWrapper from "@/components/PageWrapper";
 import ReputationInfo from "@/components/ReputationInfo";
 import Toast from "@/components/Toast";
-import PostCard, { type Post, type User as Author } from "@/components/PostCard";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PostCard, { type Post } from "@/components/PostCard";
+import CommentComposer from "@/components/CommentComposer";
+import CommentThread, { type Comment } from "@/components/CommentThread";
 import { getErrorMessage } from "@/lib/apiClient";
-
-// Reuses PostCard's own Post/User types rather than maintaining a second,
-// diverging definition (the previous local type declared status/aiLabel as
-// plain `string`, which is exactly the kind of page-specific looseness this
-// consolidation removes).
-type Comment = {
-  _id: string;
-  content: string;
-  createdAt: string;
-  parentComment?: string | null;
-  isDeleted?: boolean;
-  author: Author;
-};
 
 export default function PostDetailPage({
   params,
@@ -36,11 +25,17 @@ export default function PostDetailPage({
   const [message, setMessage] = useState("");
 
   const [newComment, setNewComment] = useState("");
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+
   const [replyMap, setReplyMap] = useState<Record<string, string>>({});
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replySubmittingId, setReplySubmittingId] = useState<string | null>(null);
 
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState("");
+  const [editSubmittingId, setEditSubmittingId] = useState<string | null>(null);
+
+  const [commentPendingDeleteId, setCommentPendingDeleteId] = useState<string | null>(null);
 
   const [reportReason, setReportReason] = useState("other");
   const [reportSubmitting, setReportSubmitting] = useState(false);
@@ -64,12 +59,17 @@ export default function PostDetailPage({
   }, [params]);
 
   async function addComment(parentComment?: string | null) {
+    const content = parentComment ? replyMap[parentComment] : newComment;
+    if (!content?.trim()) return;
+
+    const busy = parentComment ? replySubmittingId === parentComment : commentSubmitting;
+    if (busy) return;
+
+    if (parentComment) setReplySubmittingId(parentComment);
+    else setCommentSubmitting(true);
+
     try {
       const resolvedParams = await params;
-      const content = parentComment ? replyMap[parentComment] : newComment;
-
-      if (!content?.trim()) return;
-
       await axios.post(
         `/api/posts/${resolvedParams.id}/comments`,
         {
@@ -90,10 +90,13 @@ export default function PostDetailPage({
         setNewComment("");
       }
 
-      fetchDetail();
+      await fetchDetail();
       setMessage("Comment posted");
     } catch (error: unknown) {
       setMessage(getErrorMessage(error, "Failed to add comment"));
+    } finally {
+      if (parentComment) setReplySubmittingId(null);
+      else setCommentSubmitting(false);
     }
   }
 
@@ -143,7 +146,20 @@ export default function PostDetailPage({
     }
   }
 
-  async function updateComment(commentId: string) {
+  function startEditComment(commentId: string, existingContent: string) {
+    setEditingCommentId(commentId);
+    setEditCommentText(existingContent);
+  }
+
+  function cancelEditComment() {
+    setEditingCommentId(null);
+    setEditCommentText("");
+  }
+
+  async function saveEditComment(commentId: string) {
+    if (editSubmittingId === commentId || !editCommentText.trim()) return;
+    setEditSubmittingId(commentId);
+
     try {
       await axios.patch(
         `/api/comments/${commentId}`,
@@ -157,14 +173,19 @@ export default function PostDetailPage({
 
       setEditingCommentId(null);
       setEditCommentText("");
-      fetchDetail();
+      await fetchDetail();
       setMessage("Comment updated");
     } catch (error: unknown) {
       setMessage(getErrorMessage(error, "Failed to update comment"));
+    } finally {
+      setEditSubmittingId(null);
     }
   }
 
-  async function deleteComment(commentId: string) {
+  async function confirmDeleteComment() {
+    const commentId = commentPendingDeleteId;
+    if (!commentId) return;
+
     try {
       await axios.delete(`/api/comments/${commentId}`, {
         headers: {
@@ -172,11 +193,21 @@ export default function PostDetailPage({
         },
       });
 
-      fetchDetail();
+      await fetchDetail();
       setMessage("Comment deleted");
     } catch (error: unknown) {
       setMessage(getErrorMessage(error, "Failed to delete comment"));
+    } finally {
+      setCommentPendingDeleteId(null);
     }
+  }
+
+  function startReply(commentId: string) {
+    setReplyingTo((prev) => (prev === commentId ? null : commentId));
+  }
+
+  function cancelReply() {
+    setReplyingTo(null);
   }
 
   const commentsByParent = useMemo(() => {
@@ -189,6 +220,14 @@ export default function PostDetailPage({
     return grouped;
   }, [comments]);
 
+  const commentsById = useMemo(() => {
+    const byId: Record<string, Comment> = {};
+    for (const comment of comments) {
+      byId[comment._id] = comment;
+    }
+    return byId;
+  }, [comments]);
+
   useEffect(() => {
     const run = async () => {
       await fetchDetail();
@@ -196,137 +235,6 @@ export default function PostDetailPage({
 
     void run();
   }, [fetchDetail]);
-
-  const renderComments = (parentKey: string = "root", level = 0) => {
-    const items = commentsByParent[parentKey] || [];
-
-    return items.map((comment) => {
-      const canEdit =
-        currentUser &&
-        (currentUser.id === comment.author?._id || currentUser.role === "admin");
-
-      return (
-        <div
-          key={comment._id}
-          className={`vv-post-comment-thread ${level > 0 ? "ml-6 mt-3" : "mb-3"}`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              {comment.author?.avatarUrl ? (
-                <Image
-                  src={comment.author.avatarUrl}
-                  alt={comment.author.username}
-                  width={32}
-                  height={32}
-                  unoptimized
-                  className="w-8 h-8 rounded-full object-cover border"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-slate-200 border flex items-center justify-center text-xs text-slate-500">
-                  {comment.author?.username?.slice(0, 1)?.toUpperCase()}
-                </div>
-              )}
-
-              <div>
-                <p className="text-sm font-medium">{comment.author?.username}</p>
-                <p className="text-xs text-slate-500">
-                  {new Date(comment.createdAt).toLocaleString()}
-                </p>
-              </div>
-            </div>
-
-            {canEdit && !comment.isDeleted && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setEditingCommentId(comment._id);
-                    setEditCommentText(comment.content);
-                  }}
-                  className="vv-btn-secondary text-xs px-2 py-1"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => deleteComment(comment._id)}
-                  className="vv-btn-danger text-xs px-2 py-1"
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
-
-          {editingCommentId === comment._id ? (
-            <div className="mt-3">
-              <textarea
-                className="vv-textarea mb-2"
-                rows={3}
-                value={editCommentText}
-                onChange={(e) => setEditCommentText(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => updateComment(comment._id)}
-                  className="vv-btn-primary"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => {
-                    setEditingCommentId(null);
-                    setEditCommentText("");
-                  }}
-                  className="vv-btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm leading-6 text-slate-700 mt-3">{comment.content}</p>
-          )}
-
-          {!comment.isDeleted && (
-            <div className="mt-3">
-              <button
-                onClick={() =>
-                  setReplyingTo((prev) => (prev === comment._id ? null : comment._id))
-                }
-                className="vv-btn-secondary text-xs"
-              >
-                Reply
-              </button>
-
-              {replyingTo === comment._id && (
-                <div className="mt-3">
-                  <textarea
-                    className="vv-textarea mb-2"
-                    rows={2}
-                    placeholder={`Reply to ${comment.author?.username}...`}
-                    value={replyMap[comment._id] || ""}
-                    onChange={(e) =>
-                      setReplyMap((prev) => ({
-                        ...prev,
-                        [comment._id]: e.target.value,
-                      }))
-                    }
-                  />
-                  <button
-                    onClick={() => addComment(comment._id)}
-                    className="vv-btn-primary"
-                  >
-                    Send Reply
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="mt-3">{renderComments(comment._id, level + 1)}</div>
-        </div>
-      );
-    });
-  };
 
   return (
     <PageWrapper
@@ -379,19 +287,12 @@ export default function PostDetailPage({
       <div className="vv-card p-5 mb-6">
         <h3 className="vv-section-title mb-4">Add Comment</h3>
 
-        <div className="vv-post-comment-shell">
-          <textarea
-            className="vv-textarea mb-3"
-            rows={3}
-            placeholder="Write a comment..."
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-          />
-
-          <button onClick={() => addComment()} className="vv-btn-primary">
-            Post Comment
-          </button>
-        </div>
+        <CommentComposer
+          value={newComment}
+          onChange={setNewComment}
+          onSubmit={() => addComment()}
+          submitting={commentSubmitting}
+        />
       </div>
 
       <div className="vv-card p-5">
@@ -403,9 +304,43 @@ export default function PostDetailPage({
             description="Start the thread with a first response or clarification."
           />
         ) : (
-          <div>{renderComments()}</div>
+          <CommentThread
+            parentKey="root"
+            level={0}
+            commentsByParent={commentsByParent}
+            commentsById={commentsById}
+            currentUserId={currentUser?.id || currentUser?._id}
+            isAdmin={currentUser?.role === "admin"}
+            editingCommentId={editingCommentId}
+            editContent={editCommentText}
+            onEditContentChange={setEditCommentText}
+            onStartEdit={startEditComment}
+            onSaveEdit={saveEditComment}
+            onCancelEdit={cancelEditComment}
+            editSubmittingId={editSubmittingId}
+            onRequestDelete={setCommentPendingDeleteId}
+            replyingTo={replyingTo}
+            replyValues={replyMap}
+            onReplyValueChange={(commentId, value) =>
+              setReplyMap((prev) => ({ ...prev, [commentId]: value }))
+            }
+            onStartReply={startReply}
+            onCancelReply={cancelReply}
+            onSubmitReply={(commentId) => addComment(commentId)}
+            replySubmittingId={replySubmittingId}
+          />
         )}
       </div>
+
+      <ConfirmDialog
+        open={commentPendingDeleteId !== null}
+        title="Delete this comment?"
+        description="This removes the comment's content. Replies may remain in the discussion."
+        confirmLabel="Delete"
+        destructive
+        onCancel={() => setCommentPendingDeleteId(null)}
+        onConfirm={confirmDeleteComment}
+      />
     </PageWrapper>
   );
 }

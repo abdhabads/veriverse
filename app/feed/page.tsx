@@ -71,7 +71,6 @@ export default function FeedPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [relations, setRelations] = useState<Relation[]>([]);
   const [commentsMap, setCommentsMap] = useState<Record<string, Comment[]>>({});
-  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
   const [reportReasons, setReportReasons] = useState<Record<string, string>>({});
   const [reportNotes, setReportNotes] = useState<Record<string, string>>({});
   const [creatingPost, setCreatingPost] = useState(false);
@@ -98,7 +97,6 @@ export default function FeedPage() {
   const [sortOrder, setSortOrder] = useState("recent");
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
-  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [publishPhase, setPublishPhase] = useState<PublishPhase>("idle");
   const publishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -309,37 +307,6 @@ export default function FeedPage() {
       },
       onError: showError,
       onFinally: () => setPostPending(postId, null),
-    });
-  };
-
-  const addComment = async (postId: string) => {
-    const content = (commentInputs[postId] || "").trim();
-    if (!content) {
-      showError("Comment cannot be empty.");
-      return;
-    }
-
-    await runMutation({
-      action: () =>
-        api.post(`/posts/${postId}/comments`, {
-          content,
-        }),
-      onSuccess: (res) => {
-        const newComment = res.data.comment as Comment;
-
-        setCommentsMap((prev) => ({
-          ...prev,
-          [postId]: [...(prev[postId] || []), newComment],
-        }));
-
-        setCommentInputs((prev) => ({
-          ...prev,
-          [postId]: "",
-        }));
-
-        showSuccess("Comment added.");
-      },
-      onError: showError,
     });
   };
 
@@ -1023,20 +990,7 @@ export default function FeedPage() {
                   onReportReasonChange={(postId, reason) =>
                     setReportReasonMap((prev) => ({ ...prev, [postId]: reason }))
                   }
-                  isCommentsExpanded={Boolean(expandedComments[post._id])}
-                  onToggleComments={(postId) =>
-                    setExpandedComments((prev) => ({
-                      ...prev,
-                      [postId]: !prev[postId],
-                    }))
-                  }
                   comments={commentsMap[post._id]}
-                  commentInput={commentInputs[post._id] || ""}
-                  onCommentInputChange={(postId, value) =>
-                    setCommentInputs((prev) => ({ ...prev, [postId]: value }))
-                  }
-                  onAddComment={addComment}
-                  onLoadComments={fetchComments}
                   onNavigateToProfile={(username) => router.push(`/u/${username}`)}
                 />
               ))}
