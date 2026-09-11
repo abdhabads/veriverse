@@ -8,6 +8,10 @@ import TrustVerdictBadge from "@/components/TrustVerdictBadge";
 import { getAiLabelTone, getDisplayedAiLabel } from "@/lib/trustPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
 import ReputationInfo from "@/components/ReputationInfo";
+import { fetchMySafetyRelations, toggleSafetyRelation } from "@/lib/profileTrustClient";
+
+const BLOCK_CONFIRM_MESSAGE =
+  "Block this user? Their posts will be hidden from your feed, any Follow relationship between you will be removed, and you won't be able to message, comment/reply, or repost each other's posts. Unblocking later won't restore the Follow relationship.";
 
 type User = {
   _id: string;
@@ -18,6 +22,13 @@ type User = {
   rewardPoints: number;
   avatarUrl?: string;
   badges?: string[];
+};
+
+type Relation = {
+  relationType: "block" | "mute";
+  targetUser: {
+    _id: string;
+  };
 };
 
 type Post = {
@@ -53,6 +64,8 @@ export default function PublicProfilePage({
   const [followBusy, setFollowBusy] = useState(false);
   const [messageBusy, setMessageBusy] = useState(false);
   const [followCounts, setFollowCounts] = useState<{ followers: number; following: number } | null>(null);
+  const [relations, setRelations] = useState<Relation[]>([]);
+  const [relationBusy, setRelationBusy] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -84,6 +97,16 @@ export default function PublicProfilePage({
         setFollowsYou(Boolean(res.data.followsYou));
       })
       .catch(() => setIsFollowing(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, currentUser]);
+
+  useEffect(() => {
+    if (!user || !currentUser) return;
+    if (String(currentUser._id) === String(user._id)) return;
+
+    fetchMySafetyRelations()
+      .then((data) => setRelations(data.relations || []))
+      .catch(() => setRelations([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, currentUser]);
 
@@ -132,6 +155,67 @@ export default function PublicProfilePage({
     } catch (error: any) {
       setMessage(getErrorMessage(error, "Failed to start conversation"));
       setMessageBusy(false);
+    }
+  };
+
+  const isBlocked = user
+    ? relations.some(
+        (item) => item.relationType === "block" && String(item.targetUser?._id) === String(user._id)
+      )
+    : false;
+  const isMuted = user
+    ? relations.some(
+        (item) => item.relationType === "mute" && String(item.targetUser?._id) === String(user._id)
+      )
+    : false;
+
+  const toggleRelation = async (relationType: "block" | "mute") => {
+    if (!user || relationBusy) return;
+    const alreadyActive = relationType === "block" ? isBlocked : isMuted;
+
+    if (relationType === "block" && !alreadyActive && !window.confirm(BLOCK_CONFIRM_MESSAGE)) {
+      return;
+    }
+
+    setRelationBusy(true);
+    try {
+      await toggleSafetyRelation({ targetUserId: user._id, relationType });
+
+      setRelations((prev) => {
+        if (alreadyActive) {
+          return prev.filter(
+            (item) =>
+              !(item.relationType === relationType && String(item.targetUser?._id) === String(user._id))
+          );
+        }
+        const exists = prev.some(
+          (item) => item.relationType === relationType && String(item.targetUser?._id) === String(user._id)
+        );
+        if (exists) return prev;
+        return [...prev, { relationType, targetUser: { _id: user._id } }];
+      });
+
+      if (relationType === "block" && !alreadyActive) {
+        // The backend removes any existing Follow edge the moment a block is
+        // created - reflect that immediately rather than leaving a stale
+        // "Following"/"Follows you" state on screen.
+        setIsFollowing(false);
+        setFollowsYou(false);
+      }
+
+      setMessage(
+        relationType === "block"
+          ? alreadyActive
+            ? "User unblocked."
+            : "User blocked."
+          : alreadyActive
+          ? "User unmuted."
+          : "User muted."
+      );
+    } catch (error: any) {
+      setMessage(getErrorMessage(error, "Failed to update relation"));
+    } finally {
+      setRelationBusy(false);
     }
   };
 
@@ -187,8 +271,8 @@ export default function PublicProfilePage({
             {currentUserChecked &&
               currentUser &&
               String(currentUser._id) !== String(user._id) && (
-                <div className="flex items-center gap-2">
-                  {isFollowing !== null && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {!isBlocked && isFollowing !== null && (
                     <button
                       type="button"
                       data-testid="follow-toggle"
@@ -199,19 +283,39 @@ export default function PublicProfilePage({
                       {isFollowing ? "Following" : "Follow"}
                     </button>
                   )}
-                  {followsYou && (
+                  {!isBlocked && followsYou && (
                     <span data-testid="follows-you-pill" className="vv-pill-gray">
                       Follows you
                     </span>
                   )}
+                  {!isBlocked && (
+                    <button
+                      type="button"
+                      data-testid="message-button"
+                      onClick={openConversation}
+                      disabled={messageBusy}
+                      className="vv-btn-secondary"
+                    >
+                      {messageBusy ? "Opening..." : "Message"}
+                    </button>
+                  )}
                   <button
                     type="button"
-                    data-testid="message-button"
-                    onClick={openConversation}
-                    disabled={messageBusy}
+                    data-testid="block-toggle"
+                    onClick={() => toggleRelation("block")}
+                    disabled={relationBusy}
+                    className="vv-btn-danger"
+                  >
+                    {relationBusy ? "Working..." : isBlocked ? "Unblock" : "Block"}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="mute-toggle"
+                    onClick={() => toggleRelation("mute")}
+                    disabled={relationBusy}
                     className="vv-btn-secondary"
                   >
-                    {messageBusy ? "Opening..." : "Message"}
+                    {relationBusy ? "Working..." : isMuted ? "Unmute" : "Mute"}
                   </button>
                 </div>
               )}

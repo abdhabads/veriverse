@@ -559,7 +559,9 @@ export default function FeedPage() {
     if (
       relationType === "block" &&
       !alreadyActive &&
-      !window.confirm("Block this user and hide their posts from your feed?")
+      !window.confirm(
+        "Block this user? Their posts will be hidden from your feed, any Follow relationship between you will be removed, and you won't be able to message, comment/reply, or repost each other's posts. Unblocking later won't restore the Follow relationship."
+      )
     ) {
       return;
     }
