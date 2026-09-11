@@ -1,20 +1,18 @@
+// components/Toast.tsx
+// Thin compatibility wrapper - the real implementation is now
+// components/ui/Alert.tsx (token-aligned colors, correct role/aria-live).
+// Kept with its exact original prop shape so the ~20+ existing
+// `import Toast from "@/components/Toast"` call sites don't need to
+// change in this phase; that migration is left to each surface's own
+// owning P2 phase.
+import Alert, { type AlertType } from "@/components/ui/Alert";
+
 export default function Toast({
   message,
   type = "info",
 }: {
   message: string;
-  type?: "success" | "error" | "info";
+  type?: AlertType;
 }) {
-  const color =
-    type === "success"
-      ? "border border-emerald-500/15 bg-emerald-500/10 text-emerald-800"
-      : type === "error"
-      ? "border border-red-500/15 bg-red-500/10 text-red-800"
-      : "border border-slate-700/10 bg-white/70 text-slate-700";
-
-  return (
-    <div className={`rounded-2xl px-4 py-3 text-sm shadow-sm backdrop-blur-md ${color}`}>
-      {message}
-    </div>
-  );
+  return <Alert message={message} type={type} />;
 }

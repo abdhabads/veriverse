@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import PageWrapper from "@/components/PageWrapper";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
-import Toast from "@/components/Toast";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
+import Surface from "@/components/ui/Surface";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { usePageState } from "@/hooks/usePageState";
 import {
@@ -98,19 +100,16 @@ export default function SafetyPage() {
       title="Safety Controls"
       subtitle="Manage blocked and muted users."
     >
-      {message && <Toast message={message} type={messageType} />}
+      {message && <Alert message={message} type={messageType} />}
 
       {loading ? (
         <LoadingSpinner label="Loading safety controls..." />
       ) : relations.length === 0 ? (
         <div className="space-y-6">
           <div className="flex justify-end">
-            <button
-              onClick={() => router.push("/profile")}
-              className="vv-btn-secondary"
-            >
+            <Button variant="secondary" onClick={() => router.push("/profile")}>
               Back to Profile
-            </button>
+            </Button>
           </div>
 
           <EmptyState
@@ -121,77 +120,76 @@ export default function SafetyPage() {
       ) : (
         <div className="space-y-6">
           <div className="flex justify-end">
-            <button
-              onClick={() => router.push("/profile")}
-              className="vv-btn-secondary"
-            >
+            <Button variant="secondary" onClick={() => router.push("/profile")}>
               Back to Profile
-            </button>
+            </Button>
           </div>
 
-          <div className="vv-card p-5">
+          <Surface className="p-5">
             <h2 className="vv-section-title mb-4">Blocked Users</h2>
             {blocked.length === 0 ? (
-              <p className="text-sm text-slate-500">No blocked users.</p>
+              <p className="vv-text-body-sm">No blocked users.</p>
             ) : (
               <div className="space-y-3">
                 {blocked.map((item) => (
-                  <div key={`block-${item.targetUser._id}`} className="vv-card-soft p-4">
+                  <Surface tone="soft" key={`block-${item.targetUser._id}`} className="p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-medium text-veriverse-dark">
+                        <p className="vv-text-card-title">
                           {item.targetUser.username || "Unknown User"}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="vv-text-meta">
                           Reputation: {Number(item.targetUser.reputation || 0)}
                         </p>
                       </div>
 
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => removeRelation(item.targetUser._id, "block")}
-                        disabled={pendingUserId === item.targetUser._id}
-                        className="vv-btn-secondary"
+                        loading={pendingUserId === item.targetUser._id}
                       >
                         {pendingUserId === item.targetUser._id ? "Working..." : "Unblock"}
-                      </button>
+                      </Button>
                     </div>
-                  </div>
+                  </Surface>
                 ))}
               </div>
             )}
-          </div>
+          </Surface>
 
-          <div className="vv-card p-5">
+          <Surface className="p-5">
             <h2 className="vv-section-title mb-4">Muted Users</h2>
             {muted.length === 0 ? (
-              <p className="text-sm text-slate-500">No muted users.</p>
+              <p className="vv-text-body-sm">No muted users.</p>
             ) : (
               <div className="space-y-3">
                 {muted.map((item) => (
-                  <div key={`mute-${item.targetUser._id}`} className="vv-card-soft p-4">
+                  <Surface tone="soft" key={`mute-${item.targetUser._id}`} className="p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-medium text-veriverse-dark">
+                        <p className="vv-text-card-title">
                           {item.targetUser.username || "Unknown User"}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="vv-text-meta">
                           Reputation: {Number(item.targetUser.reputation || 0)}
                         </p>
                       </div>
 
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => removeRelation(item.targetUser._id, "mute")}
-                        disabled={pendingUserId === item.targetUser._id}
-                        className="vv-btn-secondary"
+                        loading={pendingUserId === item.targetUser._id}
                       >
                         {pendingUserId === item.targetUser._id ? "Working..." : "Unmute"}
-                      </button>
+                      </Button>
                     </div>
-                  </div>
+                  </Surface>
                 ))}
               </div>
             )}
-          </div>
+          </Surface>
         </div>
       )}
     </PageWrapper>

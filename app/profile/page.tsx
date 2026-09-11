@@ -6,6 +6,7 @@ import PageWrapper from "@/components/PageWrapper";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { usePageState } from "@/hooks/usePageState";
 import {
@@ -58,6 +59,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [postPendingDeleteId, setPostPendingDeleteId] = useState<string | null>(null);
   const [followCounts, setFollowCounts] = useState<{ followers: number; following: number } | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestionBusy, setSuggestionBusy] = useState<Record<string, boolean>>({});
@@ -130,9 +132,17 @@ export default function ProfilePage() {
     }
   }
 
-  async function deleteOwnPost(postId: string) {
-    const confirmed = window.confirm("Are you sure you want to delete this post?");
-    if (!confirmed) return;
+  function requestDeletePost(postId: string) {
+    setPostPendingDeleteId(postId);
+  }
+
+  function cancelDeletePost() {
+    setPostPendingDeleteId(null);
+  }
+
+  async function confirmDeletePost() {
+    const postId = postPendingDeleteId;
+    if (!postId) return;
 
     setDeletingPostId(postId);
     clearMessage();
@@ -145,6 +155,7 @@ export default function ProfilePage() {
       showError(getErrorMessage(error, "Failed to delete post"));
     } finally {
       setDeletingPostId(null);
+      setPostPendingDeleteId(null);
     }
   }
 
@@ -384,7 +395,7 @@ export default function ProfilePage() {
                     </p>
                     <div className="mt-3">
                       <button
-                        onClick={() => deleteOwnPost(post._id)}
+                        onClick={() => requestDeletePost(post._id)}
                         disabled={deletingPostId === post._id}
                         className="vv-btn-danger"
                       >
@@ -398,6 +409,16 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={postPendingDeleteId !== null}
+        title="Delete this post?"
+        description="Are you sure you want to delete this post?"
+        confirmLabel="Delete"
+        destructive
+        onCancel={cancelDeletePost}
+        onConfirm={confirmDeletePost}
+      />
     </PageWrapper>
   );
 }

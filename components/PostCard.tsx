@@ -12,6 +12,7 @@ import Link from "next/link";
 import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
 import TrustSummaryLine from "@/components/TrustSummaryLine";
 import ActionIcon from "@/components/ActionIcons";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { sharePost } from "@/lib/shareLink";
 
 export type User = {
@@ -224,6 +225,7 @@ export default function PostCard({
   onNavigateToProfile,
 }: PostCardProps) {
   const [shareFeedback, setShareFeedback] = useState("");
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
   const handleShare = async () => {
     setShareFeedback("");
@@ -435,12 +437,7 @@ export default function PostCard({
                     </span>
                   </button>
                   <button
-                    onClick={() => {
-                      const confirmed = window.confirm(
-                        "Are you sure you want to delete this post?"
-                      );
-                      if (confirmed) onDelete(post._id);
-                    }}
+                    onClick={() => setIsDeleteConfirmOpen(true)}
                     className="vv-post-action-button focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] vv-post-action-warn"
                   >
                     <span className="flex items-center gap-1.5">
@@ -585,6 +582,19 @@ export default function PostCard({
           {post.createdAt ? new Date(post.createdAt).toLocaleString() : "Unknown time"}
         </span>
       </div>
+
+      <ConfirmDialog
+        open={isDeleteConfirmOpen}
+        title="Delete this post?"
+        description="Are you sure you want to delete this post?"
+        confirmLabel="Delete"
+        destructive
+        onCancel={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          setIsDeleteConfirmOpen(false);
+          onDelete(post._id);
+        }}
+      />
     </div>
   );
 }

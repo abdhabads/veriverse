@@ -12,11 +12,39 @@
   /* Trust-verdict tones: a single disciplined 4-color language shared by
      TrustVerdictBadge, VerificationBadge, and GroundedEvidencePanel, so
      "how trustworthy is this claim" reads the same way everywhere instead
-     of each component picking its own ad hoc palette. */
+     of each component picking its own ad hoc palette. Owned by P2.4 -
+     not touched by the P2.1 design-system pass below. */
   --color-verdict-positive: #1f6f4a;
   --color-verdict-negative: #9c2b22;
   --color-verdict-review: #8a5a12;
   --color-verdict-neutral: rgba(20, 32, 51, 0.62);
+
+  /* --color-veriverse-purple is the historical name for this token, kept
+     as-is for compatibility (many existing classes reference it). It is
+     visually coral/orange, not purple - --color-veriverse-accent is the
+     correctly-named alias for new code. Same value, no repo-wide rename. */
+  --color-veriverse-accent: #e85d3f;
+
+  /* P2.1 semantic roles (design-system foundation). These exist so that
+     "you're focused", "this is destructive", and "this claim is disputed"
+     are never forced to share --color-veriverse-purple/accent again the
+     way PostCard's focus rings and .vv-post-action-warn (Oppose/Block/
+     Report/Delete) currently do. New primitives consume these; existing
+     PostCard call sites are intentionally left alone here - that
+     migration belongs to P2.3, which owns PostCard's action styling. */
+  --color-focus-ring: #1c6e8c;
+  --color-danger: #a3261f;
+  --color-opposition: #3a5a78;
+
+  /* Bounded radius/shadow scale for new primitives only. Existing card
+     classes below (.vv-card, .vv-hero, .vv-admin-command, etc.) keep
+     their own arbitrary values untouched - this scale is for components
+     built in components/ui/ going forward, not a retrofit. */
+  --radius-sm: 16px;
+  --radius-md: 24px;
+  --radius-lg: 32px;
+  --shadow-card: var(--shadow-vv);
+  --shadow-lifted: 0 24px 64px rgba(20, 32, 51, 0.11);
 }
 
 html,
@@ -226,8 +254,8 @@ h6 {
   }
 
   .vv-input:focus {
-    border-color: #e85d3f;
-    box-shadow: 0 0 0 4px rgba(232, 93, 63, 0.14);
+    border-color: var(--color-focus-ring);
+    box-shadow: 0 0 0 4px rgba(28, 110, 140, 0.16);
   }
 
   .vv-textarea {
@@ -237,8 +265,8 @@ h6 {
   }
 
   .vv-textarea:focus {
-    border-color: #e85d3f;
-    box-shadow: 0 0 0 4px rgba(232, 93, 63, 0.14);
+    border-color: var(--color-focus-ring);
+    box-shadow: 0 0 0 4px rgba(28, 110, 140, 0.16);
   }
 
   .vv-select {
@@ -248,8 +276,8 @@ h6 {
   }
 
   .vv-select:focus {
-    border-color: #e85d3f;
-    box-shadow: 0 0 0 4px rgba(232, 93, 63, 0.14);
+    border-color: var(--color-focus-ring);
+    box-shadow: 0 0 0 4px rgba(28, 110, 140, 0.16);
   }
 
   .vv-btn-primary,
@@ -276,7 +304,21 @@ h6 {
   .vv-input:focus-visible,
   .vv-textarea:focus-visible,
   .vv-select:focus-visible {
-    box-shadow: 0 0 0 4px rgba(232, 93, 63, 0.18);
+    box-shadow: 0 0 0 4px rgba(28, 110, 140, 0.22);
+  }
+
+  /* Shared focus-visible treatment for components/ui/* primitives - one
+     definition, one color (--color-focus-ring), instead of each new
+     component hand-rolling its own outline like PostCard's inline
+     `focus-visible:outline-[#e85d3f]` strings do today. Not retrofit onto
+     PostCard itself in P2.1 - that cleanup rides along with P2.3. */
+  .vv-focus-ring {
+    @apply focus:outline-none;
+  }
+
+  .vv-focus-ring:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
   }
 
   .vv-btn-primary:active,
@@ -348,6 +390,27 @@ h6 {
 
   .vv-btn-danger:hover {
     background-color: #fee2e2;
+  }
+
+  /* New in P2.1: a low-emphasis variant and a compact size, filling gaps
+     the existing four vv-btn-* variants (all one size) didn't cover. */
+  .vv-btn-ghost {
+    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition;
+    background: transparent;
+    color: #16324f;
+  }
+
+  .vv-btn-ghost:hover {
+    background-color: rgba(20, 32, 51, 0.06);
+  }
+
+  .vv-btn-ghost:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .vv-btn-sm {
+    @apply min-h-0 px-3.5 py-2 text-[13px];
   }
 
   .vv-pill {
@@ -516,6 +579,81 @@ h6 {
     border-color: rgba(20, 32, 51, 0.1);
     box-shadow: 0 28px 80px rgba(20, 32, 51, 0.12);
     backdrop-filter: blur(18px);
+  }
+
+  /* P2.1 typography roles - naming existing sizes and filling the gaps
+     (.vv-title/.vv-section-title/.vv-subtitle/.vv-label already covered
+     page-title/section-title/subtitle/label; card-title/body/body-small/
+     meta had no shared class before, just ad hoc Tailwind per call site).
+     No new rendered sizes - each maps to a size already in use somewhere
+     in the app. */
+  .vv-text-card-title {
+    @apply text-base font-semibold;
+    color: #142033;
+  }
+
+  .vv-text-body {
+    @apply text-[15px] leading-7;
+    color: rgba(20, 32, 51, 0.86);
+  }
+
+  .vv-text-body-sm {
+    @apply text-sm leading-6;
+    color: rgba(20, 32, 51, 0.72);
+  }
+
+  .vv-text-meta {
+    @apply text-xs;
+    color: rgba(20, 32, 51, 0.52);
+  }
+
+  /* Alert (components/ui/Alert.tsx) - token-aligned replacement for the
+     raw Tailwind red-500/emerald-500/slate-700 that components/Toast.tsx
+     used directly. Toast.tsx now delegates to Alert, so this is also
+     what every existing Toast consumer renders. */
+  .vv-alert {
+    @apply rounded-2xl border px-4 py-3 text-sm;
+  }
+
+  .vv-alert-success {
+    background: rgba(39, 122, 93, 0.1);
+    border-color: rgba(39, 122, 93, 0.24);
+    color: #256d52;
+  }
+
+  .vv-alert-error {
+    background: rgba(163, 38, 31, 0.08);
+    border-color: rgba(163, 38, 31, 0.22);
+    color: var(--color-danger);
+  }
+
+  .vv-alert-info {
+    background: rgba(20, 32, 51, 0.05);
+    border-color: rgba(20, 32, 51, 0.12);
+    color: rgba(20, 32, 51, 0.78);
+  }
+
+  /* ConfirmDialog (components/ui/ConfirmDialog.tsx) - native <dialog>,
+     styled to match the existing card language instead of the browser
+     default dialog chrome. */
+  .vv-confirm-dialog {
+    @apply rounded-[24px] border p-6 w-[92vw] max-w-md;
+    /* Native <dialog> centers itself via a UA-stylesheet `margin: auto`,
+       which Tailwind's preflight (margin: 0 on all elements) cancels out -
+       center explicitly instead of relying on that default. */
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    background: rgba(255, 252, 247, 0.98);
+    border-color: rgba(20, 32, 51, 0.1);
+    box-shadow: var(--shadow-lifted);
+  }
+
+  .vv-confirm-dialog::backdrop {
+    background: rgba(20, 32, 51, 0.45);
+    backdrop-filter: blur(2px);
   }
 }
 
