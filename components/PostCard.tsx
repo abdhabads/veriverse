@@ -77,6 +77,10 @@ export type Post = {
   _id: string;
   author: User;
   content: string;
+  // P3.1: the underlying Claim this post asserts, when one was resolved.
+  // Optional/nullable - absent for question/instruction content and posts
+  // created before Sprint 2's claim resolution existed.
+  claimId?: string | null;
   status:
     | "unverified"
     | "verified"
@@ -478,6 +482,14 @@ export default function PostCard({
               contentType={post.contentType}
               showScore
             />
+            {post.claimId && (
+              <Link
+                href={`/claims/${post.claimId}`}
+                className="vv-link-accent mt-3 inline-flex text-xs font-medium"
+              >
+                View claim analysis &rarr;
+              </Link>
+            )}
           </div>
         ) : (
           <TrustSummaryLine
@@ -530,6 +542,14 @@ export default function PostCard({
                   maxSources={variant === "detail" ? undefined : 3}
                   compact={variant !== "detail"}
                 />
+                {variant === "detail" && post.claimId && (
+                  <Link
+                    href={`/claims/${post.claimId}`}
+                    className="vv-link-accent mt-2 inline-flex text-xs font-medium"
+                  >
+                    View claim analysis &rarr;
+                  </Link>
+                )}
               </div>
             )}
 

@@ -215,5 +215,8 @@ const PostSchema = new Schema({
     PostSchema.index({ needsExpertReview: 1, finalized: 1, createdAt: -1 });
     PostSchema.index({ trustDecisionVersion: 1 });
     PostSchema.index({ trustEvaluationState: 1, createdAt: -1 });
+    // P3.1: supports "posts discussing this claim" on the new Claim page -
+    // the first production query to ever filter Post by claimId.
+    PostSchema.index({ claimId: 1, createdAt: -1 });
 
     export default models.Post || model("Post", PostSchema);

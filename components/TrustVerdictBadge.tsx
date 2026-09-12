@@ -35,8 +35,6 @@ export default function TrustVerdictBadge({
     >
       <TrustIcon name={verdict.icon} />
       <span>{verdict.label}</span>
-      {/* Hidden lowercase version for testing */}
-      <span className="sr-only">{verdict.label.toLowerCase()}</span>
     </span>
   );
 }
