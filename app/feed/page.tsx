@@ -8,10 +8,11 @@ import PageWrapper from "@/components/PageWrapper";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
-import SectionHeader from "@/components/SectionHeader";
-import Button from "@/components/ui/Button";
 import ActionIcon from "@/components/ActionIcons";
 import PostCard, { type Post, type User, type Comment } from "@/components/PostCard";
+import PostComposer, { type PublishPhase } from "@/components/PostComposer";
+import MobileComposeSheet from "@/components/MobileComposeSheet";
+import { MOBILE_COMPOSE_EVENT } from "@/lib/mobileComposeEvent";
 import { getTrustVerdict } from "@/lib/trustPresentation";
 import { isEvidenceHighlight } from "@/lib/discoveryPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
@@ -26,12 +27,6 @@ type Relation = {
   };
 };
 
-// Client-side-only presentation phases for the publish flow. There is no
-// backend streaming/status endpoint - "checking" is an honest description of
-// what VeriVerse may be doing during a longer request, shown purely on a
-// client timer, never a confirmed backend event.
-type PublishPhase = "idle" | "publishing" | "checking" | "success";
-
 // Chosen so a typical fast response (well under a second, sub-~1s) never
 // shows "checking" at all, while a genuinely slower request (AI screening +
 // grounding) gives the user informative feedback well before it would start
@@ -40,19 +35,6 @@ const CHECKING_DELAY_MS = 1500;
 // Long enough to register as a real confirmation, short enough not to block
 // the next action.
 const SUCCESS_DISPLAY_MS = 1200;
-
-function getPublishStatusText(phase: PublishPhase): string | null {
-  switch (phase) {
-    case "publishing":
-      return "Publishing…";
-    case "checking":
-      return "Checking claim against available evidence…";
-    case "success":
-      return "Published ✓";
-    default:
-      return null;
-  }
-}
 
 type FeedMode = "discovery" | "following";
 
@@ -108,6 +90,10 @@ export default function FeedPage() {
   }, []);
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
+  // P2.10: mobile-only compose sheet. Shares newPostContent/publishPhase
+  // with the desktop inline composer (never a second copy of the draft),
+  // so opening/closing the sheet never loses what's already typed.
+  const [mobileComposeOpen, setMobileComposeOpen] = useState(false);
 
   // Deliberately the same on server and client on first render (avoids a
   // hydration mismatch) - the mount effect below corrects it from the real
@@ -134,14 +120,30 @@ export default function FeedPage() {
   }
 
   useEffect(() => {
-    const urlMode: FeedMode =
-      new URLSearchParams(window.location.search).get("mode") === "following"
-        ? "following"
-        : "discovery";
+    const params = new URLSearchParams(window.location.search);
+    const urlMode: FeedMode = params.get("mode") === "following" ? "following" : "discovery";
     feedModeRef.current = urlMode;
     if (urlMode !== "discovery") setFeedMode(urlMode);
+
+    if (params.get("compose") === "1") {
+      setMobileComposeOpen(true);
+      // Strip the param immediately so a refresh/back-navigation doesn't
+      // reopen the sheet - a normal client-side replace, not a new history
+      // entry (matches switchFeedMode's own use of router.replace below).
+      router.replace(urlMode === "following" ? "/feed?mode=following" : "/feed", { scroll: false });
+    }
+
     void loadFeedPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Bottom-nav Compose while already on Feed: a same-route query-param
+  // navigation doesn't remount this page, so the mount effect above never
+  // sees a later ?compose=1 - the shell dispatches this event instead.
+  useEffect(() => {
+    const handler = () => setMobileComposeOpen(true);
+    window.addEventListener(MOBILE_COMPOSE_EVENT, handler);
+    return () => window.removeEventListener(MOBILE_COMPOSE_EVENT, handler);
   }, []);
 
   async function loadFeedPage() {
@@ -261,6 +263,7 @@ export default function FeedPage() {
         const createdPost = res.data.post as Post;
         prependPost(createdPost);
         setNewPostContent("");
+        setMobileComposeOpen(false);
         showSuccess("Post published successfully.");
 
         publishTimerRef.current = setTimeout(() => {
@@ -813,51 +816,39 @@ export default function FeedPage() {
               </button>
             </div>
 
-            <div className="vv-card p-5">
-              <SectionHeader
-                title="Create a Post"
-                subtitle="Publish a claim, update, or source-backed note. Risk and review signals are attached automatically."
-              />
-
-              <textarea
-                className="vv-textarea mb-3"
-                rows={4}
-                placeholder="Share something truthful..."
+            {/* P2.10: the mobile audit found this composer, permanently
+                expanded, consumed the entire first 390x844 screen with zero
+                posts visible without scrolling. Desktop/tablet keep the
+                unchanged inline card; mobile gets a compact trigger that
+                opens the same composer in an on-demand sheet instead. */}
+            <div className="hidden vv-card p-5 md:block">
+              <PostComposer
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+                onChange={setContent}
+                onSubmit={createPost}
+                publishPhase={publishPhase}
+                busy={posting || publishPhase !== "idle"}
               />
-
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                {publishPhase === "idle" ? (
-                  <p className="text-xs text-slate-500 max-w-xl">
-                    Use hashtags like #truth #health #politics
-                  </p>
-                ) : (
-                  <p
-                    role="status"
-                    aria-live="polite"
-                    className="flex items-center gap-2 text-xs text-slate-500 max-w-xl"
-                  >
-                    {publishPhase !== "success" && (
-                      <span
-                        aria-hidden="true"
-                        className="inline-block h-3 w-3 shrink-0 rounded-full border-2 border-slate-300 border-t-veriverse-purple animate-spin"
-                      />
-                    )}
-                    {getPublishStatusText(publishPhase)}
-                  </p>
-                )}
-
-                <Button
-                  data-testid="publish-button"
-                  onClick={createPost}
-                  loading={posting || publishPhase !== "idle"}
-                  variant="primary"
-                >
-                  {publishPhase === "idle" ? "Publish Post" : "Posting..."}
-                </Button>
-              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setMobileComposeOpen(true)}
+              className="vv-card block w-full p-4 text-left text-sm text-slate-500 md:hidden"
+              data-testid="mobile-compose-trigger"
+            >
+              Share a claim, question or update…
+            </button>
+
+            <MobileComposeSheet
+              open={mobileComposeOpen}
+              onClose={() => setMobileComposeOpen(false)}
+              value={content}
+              onChange={setContent}
+              onSubmit={createPost}
+              publishPhase={publishPhase}
+              busy={posting || publishPhase !== "idle"}
+            />
 
             {message && <Toast message={message} type={messageType} />}
 

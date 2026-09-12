@@ -56,10 +56,9 @@ export default function UserListItem({
         )}
         <div className="min-w-0">
           <p className="font-semibold text-sm vv-link">{user.username}</p>
-          <div className="flex items-center gap-2">
-            <p className="text-xs text-slate-500">Reputation: {user.reputation}</p>
-            {followsYou && <span className="vv-pill-gray text-[10px]">Follows you</span>}
-          </div>
+          {followsYou && (
+            <span className="vv-pill-gray text-[10px]">Follows you</span>
+          )}
         </div>
       </button>
 

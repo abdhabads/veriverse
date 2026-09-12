@@ -701,6 +701,28 @@ h6 {
     backdrop-filter: blur(2px);
   }
 
+  /* MobileComposeSheet (components/MobileComposeSheet.tsx) - same native
+     <dialog> treatment as ConfirmDialog, sized for a composer instead of a
+     confirm/cancel pair. Mobile-only trigger; the dialog itself has no
+     viewport gating since it's simply never rendered open on desktop/
+     tablet, where the inline composer is used instead. */
+  .vv-compose-sheet {
+    @apply rounded-[24px] border p-5 w-[92vw] max-w-md;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    background: rgba(255, 252, 247, 0.98);
+    border-color: rgba(20, 32, 51, 0.1);
+    box-shadow: var(--shadow-lifted);
+  }
+
+  .vv-compose-sheet::backdrop {
+    background: rgba(20, 32, 51, 0.45);
+    backdrop-filter: blur(2px);
+  }
+
   /* P2.2 application shell (components/shell/*). Reuses .vv-navbar for both
      DesktopNav and PublicShellHeader so switching between authenticated/
      public/marketing chrome never jars visually. */

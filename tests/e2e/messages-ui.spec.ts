@@ -89,3 +89,51 @@ test("an empty inbox shows the empty state", async ({ page }) => {
 
   await expect(page.getByText("No conversations yet")).toBeVisible({ timeout: 10_000 });
 });
+
+// P2.10: the mobile audit found that opening an existing conversation
+// landed on its oldest messages, with the composer (and the latest
+// messages) sitting partly behind the fixed mobile bottom nav until the
+// user manually scrolled - a real messaging surface where the primary
+// action wasn't reachable by default. This is a narrow, mobile-viewport-
+// only regression guard for that fix; it doesn't touch polling, the
+// message/conversation APIs, or MessageBubble/MessageComposer themselves.
+test.describe("mobile thread scroll position", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("opening a multi-message conversation lands with the composer fully visible", async ({ page }) => {
+    await login(page, "usera@test.com", "Password123!");
+
+    await page.goto(`/u/${TARGET_USERNAME}`);
+    const messageButton = page.getByTestId("message-button");
+    await expect(messageButton).toBeVisible({ timeout: 10_000 });
+
+    await Promise.all([
+      page.waitForURL(/\/messages\/.+/, { timeout: 10_000 }),
+      messageButton.click(),
+    ]);
+
+    // Enough messages that the history box needs to scroll internally,
+    // and the page itself is taller than the 844px viewport.
+    for (let i = 1; i <= 10; i++) {
+      await page.getByTestId("message-input").fill(`Message ${i} of the mobile scroll regression test.`);
+      await page.getByTestId("message-send").click();
+      await expect(
+        page.locator('[data-testid="message-bubble"]').filter({ hasText: `Message ${i} of` })
+      ).toBeVisible({ timeout: 10_000 });
+    }
+
+    await page.reload();
+    await expect(
+      page.locator('[data-testid="message-bubble"]').filter({ hasText: "Message 10 of" })
+    ).toBeVisible({ timeout: 10_000 });
+
+    const sendButton = page.getByTestId("message-send");
+    await expect(sendButton).toBeVisible();
+    const box = await sendButton.boundingBox();
+    expect(box).not.toBeNull();
+    // The fixed mobile bottom nav occupies roughly the last ~80px of the
+    // 844px viewport - the composer must sit fully above it, not merely
+    // technically "visible" by a sliver.
+    expect(box!.y + box!.height).toBeLessThan(760);
+  });
+});

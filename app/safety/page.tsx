@@ -117,10 +117,9 @@ export default function SafetyPage() {
           <Surface className="p-5">
             <h2 className="vv-section-title mb-1">Blocked Users</h2>
             <p className="vv-text-body-sm mb-4 text-slate-500">
-              Blocking hides a user&apos;s posts from your feed, removes any existing Follow
-              relationship between you, and prevents you from messaging, commenting on, or
-              reposting each other&apos;s content. It does not delete your prior message or
-              comment history, and unblocking will not restore a removed Follow relationship.
+              Their posts are hidden from your feed, Follow relationships are removed, and you
+              cannot message, comment on, or repost each other&apos;s content. Unblocking does
+              not restore Follow.
             </p>
             {blocked.length === 0 ? (
               <EmptyState title="No blocked users" />
@@ -144,10 +143,8 @@ export default function SafetyPage() {
           <Surface className="p-5">
             <h2 className="vv-section-title mb-1">Muted Users</h2>
             <p className="vv-text-body-sm mb-4 text-slate-500">
-              Muting hides a user&apos;s posts from your own feed without notifying them. Unlike
-              blocking, it doesn&apos;t remove a Follow relationship or restrict messaging - it
-              only changes what you see. The other person can still see and interact with your
-              content normally.
+              Their posts are hidden from your feed without notifying them. Follow and messaging
+              are unchanged.
             </p>
             {muted.length === 0 ? (
               <EmptyState title="No muted users" />

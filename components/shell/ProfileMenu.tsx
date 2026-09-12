@@ -127,6 +127,16 @@ export default function ProfileMenu({ user, unreadMessages, variant }: ProfileMe
             <p className="truncate text-sm font-semibold text-veriverse-dark">{user.username}</p>
           </div>
 
+          {/* P2.10: grouped so Messages (a primary, unread-badge-bearing
+              destination) reads as visually distinct from gamification
+              items like Leaderboard/Rewards/Referrals - the mobile audit
+              found a flat 10-item list gave every destination equal
+              weight regardless of how central it is. Groups are headings
+              only; every destination, route, and permission gate is
+              unchanged. */}
+          <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            Social
+          </p>
           <NavItem label="Profile" href="/profile" icon={<ShellIcon name="user" />} variant="menu" onClick={closeMenu} />
           {variant === "mobile" && (
             <NavItem
@@ -139,11 +149,19 @@ export default function ProfileMenu({ user, unreadMessages, variant }: ProfileMe
               onClick={closeMenu}
             />
           )}
+
+          <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            Community
+          </p>
           <NavItem label="Leaderboard" href="/leaderboard" variant="menu" onClick={closeMenu} />
           <NavItem label="Reputation" href="/reputation" variant="menu" onClick={closeMenu} />
           <NavItem label="Rewards" href="/rewards" variant="menu" onClick={closeMenu} />
           <NavItem label="Referrals" href="/referrals" variant="menu" onClick={closeMenu} />
           <NavItem label="Appeals" href="/appeals" variant="menu" onClick={closeMenu} />
+
+          <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            Account
+          </p>
           <NavItem label="Safety Controls" href="/safety" variant="menu" onClick={closeMenu} />
           <NavItem label="Account Management" href="/account-management" variant="menu" onClick={closeMenu} />
           {user.role === "admin" && (
