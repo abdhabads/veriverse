@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Toast from "@/components/Toast";
 import Logo from "@/components/Logo";
 import TurnstileWidget, { TurnstileWidgetHandle } from "@/components/TurnstileWidget";
@@ -10,15 +10,45 @@ import { api, getErrorMessage } from "@/lib/apiClient";
 
 const CAPTCHA_CONFIGURED = Boolean(process.env.NEXT_PUBLIC_CAPTCHA_SITE_KEY);
 
+// The exact, stable, non-interpolated message app/api/login/route.ts
+// returns for a deactivated account (only ever reached after the caller's
+// password has already been verified - see that route's comment on why
+// account-specific state is never disclosed before that point). Matched by
+// exact equality, never substring/heuristic parsing of arbitrary server
+// text, and the login/restore APIs themselves are untouched - this only
+// recognizes a message they already contractually return.
+const DEACTIVATED_ACCOUNT_MESSAGE =
+  "This account has been deactivated. You can restore it from the login page.";
+
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
+function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [showRestore, setShowRestore] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("error");
   const turnstileRef = useRef<TurnstileWidgetHandle>(null);
+
+  useEffect(() => {
+    if (searchParams.get("deactivated") === "1") {
+      setMessageType("success");
+      setMessage(
+        "Your account has been deactivated. You can restore it later by signing in with your credentials."
+      );
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -47,6 +77,7 @@ export default function LoginPage() {
   const handleLogin = async () => {
     if (!canSubmit) return;
     setIsSubmitting(true);
+    setShowRestore(false);
 
     try {
       const res = await axios.post("/api/login", {
@@ -60,8 +91,14 @@ export default function LoginPage() {
       setMessage("Login successful");
       router.push(res.data.user?.onboardingCompleted ? "/feed" : "/onboarding");
     } catch (error: unknown) {
+      const errorMessage = getErrorMessage(error, "Login failed");
       setMessageType("error");
-      setMessage(getErrorMessage(error, "Login failed"));
+      setMessage(errorMessage);
+      // This exact message is only ever returned after the password above
+      // has already been verified as correct - showing the restore
+      // affordance here discloses nothing an incorrect password wouldn't
+      // already have been blocked from reaching.
+      setShowRestore(errorMessage === DEACTIVATED_ACCOUNT_MESSAGE);
       // Turnstile tokens are single-use - the server has already consumed
       // (or rejected) this one, so a retry needs a fresh one. This covers
       // wrong-password, network errors, and server-side captcha rejection
@@ -69,6 +106,29 @@ export default function LoginPage() {
       turnstileRef.current?.reset();
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (isRestoring) return;
+    setIsRestoring(true);
+
+    try {
+      const res = await api.post("/profile/account/restore", {
+        email: email.trim(),
+        password,
+      });
+
+      localStorage.setItem("user", JSON.stringify(res.data.user));
+      setShowRestore(false);
+      setMessageType("success");
+      setMessage(res.data.message || "Account restored successfully.");
+      router.push(res.data.user?.onboardingCompleted ? "/feed" : "/onboarding");
+    } catch (error: unknown) {
+      setMessageType("error");
+      setMessage(getErrorMessage(error, "Failed to restore account"));
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -171,6 +231,23 @@ export default function LoginPage() {
             </div>
 
             {message && <div className="mt-4"><Toast message={message} type={messageType} /></div>}
+
+            {showRestore && (
+              <div className="vv-card-soft mt-4 p-4">
+                <p className="mb-3 text-sm text-slate-600">
+                  Your password was correct, but this account is currently deactivated. You can
+                  restore it now and continue into VeriVerse.
+                </p>
+                <button
+                  onClick={handleRestore}
+                  disabled={isRestoring}
+                  aria-busy={isRestoring}
+                  className="vv-btn-primary w-full"
+                >
+                  {isRestoring ? "Restoring..." : "Restore my account"}
+                </button>
+              </div>
+            )}
 
             <div className="mt-6 flex items-center justify-between gap-3 text-sm text-slate-600">
               <span>No account yet?</span>

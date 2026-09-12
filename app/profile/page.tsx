@@ -155,13 +155,22 @@ export default function ProfilePage() {
             onFollowersClick={() => router.push(`/u/${profile.username}/followers`)}
             onFollowingClick={() => router.push(`/u/${profile.username}/following`)}
             actions={
-              <button
-                type="button"
-                onClick={() => router.push("/account-management")}
-                className="vv-btn-secondary"
-              >
-                Edit Profile
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => router.push("/account-management")}
+                  className="vv-btn-secondary"
+                >
+                  Edit Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push("/safety")}
+                  className="vv-btn-secondary"
+                >
+                  Safety
+                </button>
+              </>
             }
           />
 

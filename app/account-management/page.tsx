@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import PageWrapper from "@/components/PageWrapper";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import Toast from "@/components/Toast";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import AccountSettingsNav from "@/components/AccountSettingsNav";
 import { clearAuth } from "@/lib/clientAuth";
 import { requireAuthenticated } from "@/lib/frontendAccess";
 import { usePageState } from "@/hooks/usePageState";
@@ -30,6 +32,7 @@ const ACCEPTED_AVATAR_TYPES = new Set([
   "image/webp",
   "image/gif",
 ]);
+const MAX_BIO_LENGTH = 300;
 
 export default function AccountManagementPage() {
   const router = useRouter();
@@ -52,9 +55,14 @@ export default function AccountManagementPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
-  const [accountPassword, setAccountPassword] = useState("");
-  const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
+
+  const [deactivatePassword, setDeactivatePassword] = useState("");
+  const [deactivateConfirmOpen, setDeactivateConfirmOpen] = useState(false);
   const [deactivatingAccount, setDeactivatingAccount] = useState(false);
+
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
@@ -230,53 +238,48 @@ export default function AccountManagementPage() {
     });
   }
 
-  async function deactivateAccount() {
-    const password = accountPassword.trim();
-    if (!password) {
+  function requestDeactivate() {
+    if (!deactivatePassword.trim()) {
       showError("Enter your password to deactivate your account.");
       return;
     }
+    setDeactivateConfirmOpen(true);
+  }
 
-    const confirmed = window.confirm(
-      "Deactivate this account? You will be signed out and login will be blocked until the account is restored."
-    );
-    if (!confirmed) return;
-
+  async function confirmDeactivate() {
     setDeactivatingAccount(true);
 
     await runMutation({
-      action: () => deactivateMyAccount(password),
+      action: () => deactivateMyAccount(deactivatePassword.trim()),
       onSuccess: () => {
+        setDeactivateConfirmOpen(false);
         clearAuth();
-        router.push("/login");
+        router.push("/login?deactivated=1");
       },
       onError: showError,
       onFinally: () => setDeactivatingAccount(false),
     });
   }
 
-  async function deleteAccount() {
-    const password = accountPassword.trim();
-    if (!password) {
+  function requestDelete() {
+    if (!deletePassword.trim()) {
       showError("Enter your password to delete your account.");
       return;
     }
-
     if (deleteConfirmationText.trim() !== "DELETE") {
       showError("Type DELETE to confirm permanent account deletion.");
       return;
     }
+    setDeleteConfirmOpen(true);
+  }
 
-    const confirmed = window.confirm(
-      "Delete this account permanently? This will remove your account and associated records and cannot be undone."
-    );
-    if (!confirmed) return;
-
+  async function confirmDelete() {
     setDeletingAccount(true);
 
     await runMutation({
-      action: () => deleteMyAccount(password),
+      action: () => deleteMyAccount(deletePassword.trim()),
       onSuccess: () => {
+        setDeleteConfirmOpen(false);
         clearAuth();
         router.push("/login");
       },
@@ -290,23 +293,16 @@ export default function AccountManagementPage() {
       title="Account Management"
       subtitle="Update your account details, password, or close your account with stronger confirmation controls."
     >
+      <AccountSettingsNav />
+
       {message && <Toast message={message} type={messageType} />}
 
       {loading ? (
         <LoadingSpinner label="Loading account settings..." />
       ) : (
-        <div className="space-y-6">
-          <div className="flex justify-end">
-            <button
-              onClick={() => router.push("/profile")}
-              className="vv-btn-secondary"
-            >
-              Back to Profile
-            </button>
-          </div>
-
+        <div className="mx-auto max-w-2xl space-y-6">
           <div className="vv-card p-5">
-            <h2 className="vv-section-title mb-4">Profile Details</h2>
+            <h2 className="vv-section-title mb-4">Profile</h2>
 
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center">
               <div className="flex w-24 flex-col items-center">
@@ -332,6 +328,7 @@ export default function AccountManagementPage() {
                   <input
                     className="sr-only"
                     type="file"
+                    aria-label="Upload profile picture"
                     accept="image/png,image/jpeg,image/webp,image/gif"
                     onChange={handleAvatarFileChange}
                   />
@@ -355,8 +352,11 @@ export default function AccountManagementPage() {
               </div>
 
               <div className="flex-1">
-                <label className="vv-label block mb-1">Username</label>
+                <label className="vv-label mb-1 block" htmlFor="am-username">
+                  Username
+                </label>
                 <input
+                  id="am-username"
                   className="vv-input"
                   type="text"
                   value={username}
@@ -368,10 +368,19 @@ export default function AccountManagementPage() {
             </div>
 
             <div className="mb-4">
-              <label className="vv-label block mb-1">Bio</label>
+              <div className="mb-1 flex items-baseline justify-between">
+                <label className="vv-label block" htmlFor="am-bio">
+                  Bio
+                </label>
+                <span className="text-xs text-slate-400">
+                  {bio.length}/{MAX_BIO_LENGTH}
+                </span>
+              </div>
               <textarea
+                id="am-bio"
                 className="vv-textarea"
                 rows={4}
+                maxLength={MAX_BIO_LENGTH}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 placeholder="Tell people who you are and what you care about."
@@ -389,11 +398,14 @@ export default function AccountManagementPage() {
           </div>
 
           <div className="vv-card p-5">
-            <h2 className="vv-section-title mb-4">Change Password</h2>
+            <h2 className="vv-section-title mb-4">Security</h2>
 
             <div className="mb-4">
-              <label className="vv-label block mb-1">Current Password</label>
+              <label className="vv-label mb-1 block" htmlFor="am-current-password">
+                Current Password
+              </label>
               <input
+                id="am-current-password"
                 className="vv-input"
                 type="password"
                 value={currentPassword}
@@ -404,8 +416,11 @@ export default function AccountManagementPage() {
             </div>
 
             <div className="mb-4">
-              <label className="vv-label block mb-1">New Password</label>
+              <label className="vv-label mb-1 block" htmlFor="am-new-password">
+                New Password
+              </label>
               <input
+                id="am-new-password"
                 className="vv-input"
                 type="password"
                 value={newPassword}
@@ -416,8 +431,11 @@ export default function AccountManagementPage() {
             </div>
 
             <div className="mb-4">
-              <label className="vv-label block mb-1">Confirm New Password</label>
+              <label className="vv-label mb-1 block" htmlFor="am-confirm-password">
+                Confirm New Password
+              </label>
               <input
+                id="am-confirm-password"
                 className="vv-input"
                 type="password"
                 value={confirmNewPassword}
@@ -427,7 +445,7 @@ export default function AccountManagementPage() {
               />
             </div>
 
-            <p className="text-xs text-slate-500 mb-4">
+            <p className="mb-4 text-xs text-slate-500">
               Passwords must be at least 8 characters and different from your current password.
             </p>
 
@@ -450,52 +468,93 @@ export default function AccountManagementPage() {
             </div>
           </div>
 
-          <div className="vv-card p-5 border border-red-200/80">
-            <h2 className="vv-section-title mb-4">Deactivate Or Delete Account</h2>
+          <div className="vv-card space-y-6 border border-red-200/80 p-5">
+            <h2 className="vv-section-title">Account Status</h2>
 
-            <div className="mb-4">
-              <label className="vv-label block mb-1">Confirm Password</label>
-              <input
-                className="vv-input"
-                type="password"
-                value={accountPassword}
-                onChange={(e) => setAccountPassword(e.target.value)}
-                autoComplete="current-password"
-                placeholder="Enter your password to continue"
-              />
-            </div>
-
-            <p className="mb-4 text-sm text-slate-600">
-              Deactivating signs you out and blocks future login until the account is restored. Deleting removes your account and associated records permanently.
-            </p>
-
-            <div className="mb-4">
-              <label className="vv-label block mb-1">Delete Confirmation</label>
-              <input
-                className="vv-input"
-                type="text"
-                value={deleteConfirmationText}
-                onChange={(e) => setDeleteConfirmationText(e.target.value)}
-                placeholder="Type DELETE to enable permanent deletion"
-                autoComplete="off"
-              />
-              <p className="mt-2 text-xs text-slate-500">
-                Permanent deletion requires typing DELETE exactly.
+            <div className="border-b border-red-100 pb-6">
+              <h3 className="mb-1 text-sm font-semibold text-veriverse-dark">
+                Deactivate account
+              </h3>
+              <p className="mb-4 text-sm text-slate-600">
+                Deactivating signs you out immediately and blocks future login. This is
+                reversible - sign in again with your email and password at any time to restore
+                your account.
               </p>
-            </div>
 
-            <div className="flex flex-wrap gap-2">
+              <div className="mb-4">
+                <label className="vv-label mb-1 block" htmlFor="am-deactivate-password">
+                  Confirm Password
+                </label>
+                <input
+                  id="am-deactivate-password"
+                  className="vv-input"
+                  type="password"
+                  value={deactivatePassword}
+                  onChange={(e) => setDeactivatePassword(e.target.value)}
+                  autoComplete="current-password"
+                  placeholder="Enter your password to continue"
+                />
+              </div>
+
               <button
-                onClick={deactivateAccount}
+                onClick={requestDeactivate}
                 disabled={deactivatingAccount || deletingAccount}
                 aria-busy={deactivatingAccount}
                 className="vv-btn-secondary"
               >
                 {deactivatingAccount ? "Deactivating..." : "Deactivate Account"}
               </button>
+            </div>
+
+            <div>
+              <h3 className="mb-1 text-sm font-semibold text-red-700">
+                Permanently delete account
+              </h3>
+              <p className="mb-2 text-sm text-slate-600">
+                This cannot be undone. Your posts, comments, votes, messages, and account
+                records will be permanently removed.
+              </p>
+              <p className="mb-4 text-xs text-slate-500">
+                If you deactivated your account first, permanent deletion becomes available 24
+                hours after deactivation. Deleting directly, without deactivating first, has no
+                such wait.
+              </p>
+
+              <div className="mb-4">
+                <label className="vv-label mb-1 block" htmlFor="am-delete-password">
+                  Confirm Password
+                </label>
+                <input
+                  id="am-delete-password"
+                  className="vv-input"
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  autoComplete="current-password"
+                  placeholder="Enter your password to continue"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="vv-label mb-1 block" htmlFor="am-delete-confirmation">
+                  Delete Confirmation
+                </label>
+                <input
+                  id="am-delete-confirmation"
+                  className="vv-input"
+                  type="text"
+                  value={deleteConfirmationText}
+                  onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                  placeholder="Type DELETE to enable permanent deletion"
+                  autoComplete="off"
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  Permanent deletion requires typing DELETE exactly.
+                </p>
+              </div>
 
               <button
-                onClick={deleteAccount}
+                onClick={requestDelete}
                 disabled={
                   deletingAccount ||
                   deactivatingAccount ||
@@ -510,6 +569,25 @@ export default function AccountManagementPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deactivateConfirmOpen}
+        title="Deactivate your account?"
+        description="You'll be signed out immediately and won't be able to log in until you restore your account. This is reversible - sign in again with your email and password at any time to restore it."
+        confirmLabel="Deactivate"
+        onCancel={() => setDeactivateConfirmOpen(false)}
+        onConfirm={confirmDeactivate}
+      />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Permanently delete your account?"
+        description="This cannot be undone. Your posts, comments, votes, messages, and account records will be permanently removed."
+        confirmLabel="Delete Permanently"
+        destructive
+        onCancel={() => setDeleteConfirmOpen(false)}
+        onConfirm={confirmDelete}
+      />
     </PageWrapper>
   );
 }
