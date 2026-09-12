@@ -10,6 +10,7 @@ import ActionIcon from "@/components/ActionIcons";
 import ClaimVerdictBadge from "@/components/ClaimVerdictBadge";
 import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
 import PostCard, { type Post } from "@/components/PostCard";
+import ClaimFollowButton from "@/components/ClaimFollowButton";
 import { toGroundingSource, type ClaimVerdictPresentation } from "@/lib/claimPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
 
@@ -57,7 +58,12 @@ type ClaimApiResponse = {
   evidence: { supporting: PublicEvidenceItem[]; contradicting: PublicEvidenceItem[]; context: PublicEvidenceItem[] };
   history: HistoryItem[];
   relatedPosts: Post[];
+  follow: { isFollowing: boolean; followerCount: number };
 };
+
+function formatFollowerCount(count: number): string {
+  return count === 1 ? "1 follower" : `${count} followers`;
+}
 
 const CONFIDENCE_LABEL: Record<string, string> = {
   high: "High confidence",
@@ -131,6 +137,27 @@ export default function ClaimPageClient({ id }: { id: string }) {
     }
   }
 
+  // Server mutations are idempotent (ensure-follow/ensure-unfollow), so the
+  // count adjustment is tied to an actual local state transition rather
+  // than blindly applying +1/-1 to every response - repeating the same
+  // mutation must never double-count.
+  function handleFollowChange(nextFollowing: boolean) {
+    setData((prev) => {
+      if (!prev) return prev;
+      const wasFollowing = prev.follow.isFollowing;
+      if (wasFollowing === nextFollowing) return prev;
+
+      const delta = nextFollowing ? 1 : -1;
+      return {
+        ...prev,
+        follow: {
+          isFollowing: nextFollowing,
+          followerCount: Math.max(0, prev.follow.followerCount + delta),
+        },
+      };
+    });
+  }
+
   const [reportReasons, setReportReasons] = useState<Record<string, string>>({});
 
   if (notFound) {
@@ -189,7 +216,28 @@ export default function ClaimPageClient({ id }: { id: string }) {
 
           {/* Current assessment */}
           <div className="vv-card p-5 mb-6">
-            <h3 className="vv-section-title mb-4">Current Assessment</h3>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <h3 className="vv-section-title">Current Assessment</h3>
+              {/* P3.3: prominent (visible in the same card as the verdict,
+                  above the fold) but visually secondary - a smaller, plain
+                  button, never competing with the verdict pill itself. */}
+              <div className="flex flex-col items-end gap-1">
+                <ClaimFollowButton
+                  claimId={id}
+                  isFollowing={data.follow.isFollowing}
+                  isLoggedIn={Boolean(currentUser)}
+                  onChange={handleFollowChange}
+                  onError={setMessage}
+                  testId={`claim-follow-${id}`}
+                  className="text-xs"
+                />
+                {data.follow.followerCount > 0 && (
+                  <span className="text-xs text-slate-500">
+                    {formatFollowerCount(data.follow.followerCount)}
+                  </span>
+                )}
+              </div>
+            </div>
             {data.assessmentStatus === "available" && data.currentAssessment ? (
               <>
                 <div className="mb-3 flex flex-wrap items-center gap-3">

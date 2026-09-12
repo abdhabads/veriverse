@@ -5,6 +5,7 @@ import EvidenceObject from "@/models/EvidenceObject";
 import Post from "@/models/Post";
 import User from "@/models/User";
 import UserRelation from "@/models/UserRelation";
+import ClaimFollow from "@/models/ClaimFollow";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { isValidObjectId } from "@/lib/validation";
 import { fail } from "@/lib/apiResponse";
@@ -184,6 +185,17 @@ export async function GET(req: Request, context: RouteContext) {
       .sort({ createdAt: -1 })
       .limit(MAX_RELATED_POSTS);
 
+    // P3.3: additive follow state. isFollowing is always a concrete boolean
+    // (never null) - a logged-out visitor is definitionally not following
+    // anything. followerCount is public regardless of auth state. Both are
+    // flat-cost, indexed lookups independent of everything else above.
+    const [isFollowing, followerCount] = await Promise.all([
+      requesterId
+        ? ClaimFollow.exists({ user: requesterId, claim: claim._id }).then(Boolean)
+        : Promise.resolve(false),
+      ClaimFollow.countDocuments({ claim: claim._id }),
+    ]);
+
     return NextResponse.json(
       {
         success: true,
@@ -202,6 +214,7 @@ export async function GET(req: Request, context: RouteContext) {
         evidence: evidencePayload,
         history,
         relatedPosts,
+        follow: { isFollowing, followerCount },
       },
       { headers: { "Cache-Control": "private, no-store" } }
     );
