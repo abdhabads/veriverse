@@ -50,7 +50,7 @@ export default function PostProvenanceDetails({
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
+        className="vv-focus-ring flex w-full items-center justify-between gap-3 rounded-2xl border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white"
       >
         <span className="text-sm font-medium text-veriverse-dark">Details</span>
         <ActionIcon

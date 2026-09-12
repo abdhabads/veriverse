@@ -66,7 +66,18 @@ export default function ConversationPage({
   // not an estimated offset - AppShell's own pb-20 already reserves space
   // below the last real content specifically so the fixed nav lands over
   // that padding, not over the composer, once the page is at its bottom.
-  const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
+  const scrollToBottom = useCallback((requestedBehavior: ScrollBehavior) => {
+    // The global reduced-motion CSS rule (app/globals.css) only reaches
+    // scroll-behavior set via CSS - an explicit `behavior` option passed to
+    // the scrollTo() JS API (as every call site here does) overrides that
+    // regardless of !important, so it has to be checked explicitly. This
+    // matters most for the incoming-message auto-pin, which can otherwise
+    // re-trigger an involuntary smooth-scroll roughly every poll interval.
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const behavior: ScrollBehavior = prefersReducedMotion ? "auto" : requestedBehavior;
+
     const container = historyRef.current;
     if (container) {
       if (behavior === "smooth") {

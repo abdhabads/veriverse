@@ -171,8 +171,15 @@ export function formatCommentCountLabel(comments?: Comment[]): string {
   return `${count} comments`;
 }
 
-const FOCUS_RING =
-  "focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]";
+// Accessible name for the comment-count link specifically - a link's name
+// should read as an action ("View ...") rather than the compact visual
+// label above, and "View no comments yet" (P2.11's first pass) is
+// grammatically awkward next to "View 1 comment"/"View 3 comments".
+export function formatCommentLinkAriaLabel(comments?: Comment[]): string {
+  if (!comments || comments.length === 0) return "View comments";
+  if (comments.length === 1) return "View 1 comment";
+  return `View ${comments.length} comments`;
+}
 
 type PostCardProps = {
   post: Post;
@@ -283,7 +290,7 @@ function PostOverflowMenu({
         aria-expanded={open}
         aria-label={label}
         aria-controls={`post-overflow-${postId}`}
-        className={`vv-post-action-button ${FOCUS_RING}`}
+        className={`vv-post-action-button vv-focus-ring`}
       >
         <span className="flex items-center gap-1.5">
           <span aria-hidden="true">&#8943;</span>
@@ -493,7 +500,7 @@ export default function PostCard({
                 onClick={handleToggleEvidence}
                 aria-expanded={isEvidenceExpanded}
                 aria-controls={`evidence-panel-${post._id}`}
-                className={`mt-4 w-full rounded-[24px] border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white ${FOCUS_RING}`}
+                className={`mt-4 w-full rounded-[24px] border border-veriverse-border bg-white/60 px-4 py-3 text-left transition hover:bg-white vv-focus-ring`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-sm font-medium text-veriverse-dark">
@@ -567,7 +574,7 @@ export default function PostCard({
                 disabled={post.finalized}
                 aria-label={`Endorse post by ${post.author?.username}`}
                 aria-disabled={post.finalized}
-                className={`vv-post-action-button vv-post-action-strong ${FOCUS_RING}`}
+                className={`vv-post-action-button vv-post-action-strong vv-focus-ring`}
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name="thumbsUp" />
@@ -580,7 +587,7 @@ export default function PostCard({
                 disabled={post.finalized}
                 aria-label={`Oppose post by ${post.author?.username}`}
                 aria-disabled={post.finalized}
-                className={`vv-post-action-button vv-post-action-oppose ${FOCUS_RING}`}
+                className={`vv-post-action-button vv-post-action-oppose vv-focus-ring`}
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name="thumbsDown" />
@@ -594,11 +601,12 @@ export default function PostCard({
           {variant === "feed" && (
             <Link
               href={`/posts/${post._id}`}
-              className={`vv-post-action-button ${FOCUS_RING}`}
+              aria-label={formatCommentLinkAriaLabel(comments)}
+              className={`vv-post-action-button vv-focus-ring`}
             >
               <span className="flex items-center gap-1.5">
                 <span aria-hidden="true">💬</span>
-                <span className="hidden sm:inline">{formatCommentCountLabel(comments)}</span>
+                <span className="hidden sm:inline" aria-hidden="true">{formatCommentCountLabel(comments)}</span>
               </span>
             </Link>
           )}
@@ -615,7 +623,7 @@ export default function PostCard({
           {isOwnPost && onStartEdit && !post.finalized && (
             <button
               onClick={() => onStartEdit(post._id, post.content)}
-              className={`vv-post-action-button ${FOCUS_RING}`}
+              className={`vv-post-action-button vv-focus-ring`}
             >
               <span className="flex items-center gap-1.5">
                 <ActionIcon name="pencil" />
@@ -629,7 +637,7 @@ export default function PostCard({
               {canEngage && onRepost && (
                 <button
                   onClick={() => onRepost(post._id)}
-                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                  className={`vv-post-menu-item w-full vv-focus-ring`}
                 >
                   <ActionIcon name="repost" />
                   Repost ({post.repostsCount || 0})
@@ -638,7 +646,7 @@ export default function PostCard({
               {canEngage && onSave && (
                 <button
                   onClick={() => onSave(post._id)}
-                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                  className={`vv-post-menu-item w-full vv-focus-ring`}
                 >
                   <ActionIcon name={isSaved ? "bookmarkFilled" : "bookmark"} />
                   {isSaved ? "Saved" : "Save"}
@@ -649,7 +657,7 @@ export default function PostCard({
                   type="button"
                   data-testid={`share-post-${post._id}`}
                   onClick={handleShare}
-                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                  className={`vv-post-menu-item w-full vv-focus-ring`}
                 >
                   <span aria-hidden="true">🔗</span>
                   Share
@@ -659,7 +667,7 @@ export default function PostCard({
               {!isOwnPost && onFollow && (
                 <button
                   onClick={() => onFollow(post.author._id)}
-                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                  className={`vv-post-menu-item w-full vv-focus-ring`}
                 >
                   <ActionIcon name={isFollowing ? "userCheck" : "userPlus"} />
                   {isFollowing ? "Following" : "Follow"}
@@ -668,7 +676,7 @@ export default function PostCard({
               {!isOwnPost && onToggleRelation && (
                 <button
                   onClick={() => onToggleRelation(post.author._id, "mute")}
-                  className={`vv-post-menu-item w-full ${FOCUS_RING}`}
+                  className={`vv-post-menu-item w-full vv-focus-ring`}
                 >
                   <ActionIcon name={isMuted ? "unmute" : "mute"} />
                   {isMuted ? "Unmute" : "Mute"}
@@ -679,13 +687,8 @@ export default function PostCard({
               )}
               {!isOwnPost && onToggleRelation && (
                 <button
-                  onClick={() => {
-                    const confirmed = isBlocked
-                      ? true
-                      : window.confirm("Block this user and hide their posts from your feed?");
-                    if (confirmed) onToggleRelation(post.author._id, "block");
-                  }}
-                  className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
+                  onClick={() => onToggleRelation(post.author._id, "block")}
+                  className={`vv-post-menu-item vv-post-menu-item-danger w-full vv-focus-ring`}
                 >
                   <ActionIcon name="shieldOff" />
                   {isBlocked ? "Unblock" : "Block"}
@@ -695,7 +698,7 @@ export default function PostCard({
                 <>
                   <button
                     onClick={() => onReport(post._id)}
-                    className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
+                    className={`vv-post-menu-item vv-post-menu-item-danger w-full vv-focus-ring`}
                   >
                     <ActionIcon name="flag" />
                     Report
@@ -715,7 +718,7 @@ export default function PostCard({
               {isOwnPost && onDelete && (
                 <button
                   onClick={() => setIsDeleteConfirmOpen(true)}
-                  className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
+                  className={`vv-post-menu-item vv-post-menu-item-danger w-full vv-focus-ring`}
                 >
                   <ActionIcon name="trash" />
                   Delete
@@ -740,7 +743,7 @@ export default function PostCard({
                 onClick={() => onVote(post._id, "accurate")}
                 disabled={post.finalized}
                 aria-label={`Endorse post by ${post.author?.username}`}
-                className={`vv-post-action-button vv-post-action-strong ${FOCUS_RING}`}
+                className={`vv-post-action-button vv-post-action-strong vv-focus-ring`}
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name="thumbsUp" />
@@ -751,7 +754,7 @@ export default function PostCard({
                 onClick={() => onVote(post._id, "inaccurate")}
                 disabled={post.finalized}
                 aria-label={`Oppose post by ${post.author?.username}`}
-                className={`vv-post-action-button vv-post-action-oppose ${FOCUS_RING}`}
+                className={`vv-post-action-button vv-post-action-oppose vv-focus-ring`}
               >
                 <span className="flex items-center gap-1.5">
                   <ActionIcon name="thumbsDown" />
@@ -770,7 +773,7 @@ export default function PostCard({
                 <>
                   <button
                     onClick={() => onReport(post._id)}
-                    className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
+                    className={`vv-post-menu-item vv-post-menu-item-danger w-full vv-focus-ring`}
                   >
                     <ActionIcon name="flag" />
                     Report
@@ -790,7 +793,7 @@ export default function PostCard({
               {isOwnPost && onDelete && (
                 <button
                   onClick={() => setIsDeleteConfirmOpen(true)}
-                  className={`vv-post-menu-item vv-post-menu-item-danger w-full ${FOCUS_RING}`}
+                  className={`vv-post-menu-item vv-post-menu-item-danger w-full vv-focus-ring`}
                 >
                   <ActionIcon name="trash" />
                   Delete

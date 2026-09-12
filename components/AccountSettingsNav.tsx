@@ -32,7 +32,7 @@ export default function AccountSettingsNav() {
             key={section.href}
             href={section.href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] ${
+            className={`vv-focus-ring rounded-full px-4 py-1.5 text-sm font-medium transition ${
               active
                 ? "bg-veriverse-dark text-white"
                 : "text-veriverse-dark/60 hover:text-veriverse-dark"

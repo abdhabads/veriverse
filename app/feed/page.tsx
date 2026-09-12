@@ -8,6 +8,7 @@ import PageWrapper from "@/components/PageWrapper";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import EmptyState from "@/components/EmptyState";
 import Toast from "@/components/Toast";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ActionIcon from "@/components/ActionIcons";
 import PostCard, { type Post, type User, type Comment } from "@/components/PostCard";
 import PostComposer, { type PublishPhase } from "@/components/PostComposer";
@@ -79,6 +80,7 @@ export default function FeedPage() {
   const [verdictFilter, setVerdictFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("recent");
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [blockConfirmTargetId, setBlockConfirmTargetId] = useState<string | null>(null);
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
   const [publishPhase, setPublishPhase] = useState<PublishPhase>("idle");
   const publishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -537,18 +539,6 @@ export default function FeedPage() {
     targetUserId: string,
     relationType: "block" | "mute"
   ) => {
-    const alreadyActive = hasRelation(targetUserId, relationType);
-
-    if (
-      relationType === "block" &&
-      !alreadyActive &&
-      !window.confirm(
-        "Block this user? Their posts will be hidden from your feed, any Follow relationship between you will be removed, and you won't be able to message, comment/reply, or repost each other's posts. Unblocking later won't restore the Follow relationship."
-      )
-    ) {
-      return;
-    }
-
     setPostPending(targetUserId, relationType);
 
     await runMutation({
@@ -609,6 +599,20 @@ export default function FeedPage() {
       onError: showError,
       onFinally: () => setPostPending(targetUserId, null),
     });
+  };
+
+  // Gates only the initial block action behind confirmation - unblock and
+  // mute/unmute proceed immediately, matching the existing semantics
+  // `toggleRelation` already encoded before this was split out. PostCard no
+  // longer confirms this itself (it used to, independently, producing two
+  // sequential native dialogs for one click - see the P2.11 audit); this is
+  // now the single confirmation gate for the whole Block flow.
+  const requestToggleRelation = (targetUserId: string, relationType: "block" | "mute") => {
+    if (relationType === "block" && !hasRelation(targetUserId, "block")) {
+      setBlockConfirmTargetId(targetUserId);
+      return;
+    }
+    void toggleRelation(targetUserId, relationType);
   };
 
   const currentUserId = currentUser?._id || currentUser?.id;
@@ -792,7 +796,7 @@ export default function FeedPage() {
                 aria-selected={feedMode === "discovery"}
                 data-testid="feed-mode-discovery"
                 onClick={() => switchFeedMode("discovery")}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] ${
+                className={`vv-focus-ring rounded-full px-4 py-1.5 text-sm font-medium transition ${
                   feedMode === "discovery"
                     ? "bg-veriverse-dark text-white"
                     : "text-veriverse-dark/60 hover:text-veriverse-dark"
@@ -806,7 +810,7 @@ export default function FeedPage() {
                 aria-selected={feedMode === "following"}
                 data-testid="feed-mode-following"
                 onClick={() => switchFeedMode("following")}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f] ${
+                className={`vv-focus-ring rounded-full px-4 py-1.5 text-sm font-medium transition ${
                   feedMode === "following"
                     ? "bg-veriverse-dark text-white"
                     : "text-veriverse-dark/60 hover:text-veriverse-dark"
@@ -858,7 +862,7 @@ export default function FeedPage() {
                 onClick={() => setIsFiltersOpen((prev) => !prev)}
                 aria-expanded={isFiltersOpen}
                 aria-controls="discovery-filters-panel"
-                className="flex w-full items-center justify-between gap-3 rounded-2xl px-2 py-2 text-left transition hover:bg-black/[0.03] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e85d3f]"
+                className="vv-focus-ring flex w-full items-center justify-between gap-3 rounded-2xl px-2 py-2 text-left transition hover:bg-black/[0.03]"
               >
                 <span className="text-sm font-semibold text-veriverse-dark">
                   Filters &amp; sort
@@ -991,7 +995,7 @@ export default function FeedPage() {
                   isSaved={savedPostIds.includes(post._id)}
                   onDelete={deletePost}
                   onFollow={followUser}
-                  onToggleRelation={toggleRelation}
+                  onToggleRelation={requestToggleRelation}
                   isFollowing={followedUserIds.includes(post.author._id)}
                   isMuted={hasRelation(post.author._id, "mute")}
                   isBlocked={hasRelation(post.author._id, "block")}
@@ -1008,6 +1012,20 @@ export default function FeedPage() {
             )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={blockConfirmTargetId !== null}
+        title="Block this user?"
+        description="Their posts will be hidden from your feed, any Follow relationship between you will be removed, and you won't be able to message, comment on, or repost each other's content. Prior message/comment history is not deleted, and unblocking later won't restore the Follow relationship."
+        confirmLabel="Block"
+        destructive
+        onCancel={() => setBlockConfirmTargetId(null)}
+        onConfirm={async () => {
+          const targetId = blockConfirmTargetId;
+          setBlockConfirmTargetId(null);
+          if (targetId) await toggleRelation(targetId, "block");
+        }}
+      />
     </PageWrapper>
   );
 }
