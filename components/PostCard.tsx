@@ -22,7 +22,7 @@ import ModerationReasonList from "@/components/ModerationReasonList";
 import ActionIcon from "@/components/ActionIcons";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PostProvenanceDetails from "@/components/PostProvenanceDetails";
-import { sharePost } from "@/lib/shareLink";
+import { sharePost, shareClaim } from "@/lib/shareLink";
 import { getDisplayedAiLabel } from "@/lib/trustPresentation";
 import { getExpertReviewReasons } from "@/lib/expertReview";
 
@@ -372,6 +372,19 @@ export default function PostCard({
     if (result.message) setShareFeedback(result.message);
   };
 
+  // P3.2: a separate, explicit action from Share - never a silent redirect
+  // of it. Post Share keeps sharing this post (author, wording, comments);
+  // this shares the canonical Claim page instead (current assessment,
+  // consolidated evidence). Only rendered when the post resolved to a claim.
+  const handleShareClaim = async () => {
+    if (!post.claimId) return;
+    setShareFeedback("");
+    const result = await shareClaim({ claimId: post.claimId });
+
+    if (result.status === "cancelled") return;
+    if (result.message) setShareFeedback(result.message);
+  };
+
   const displayedAiLabel = getDisplayedAiLabel(post);
   const expertReviewReasons =
     variant === "detail" && post.needsExpertReview
@@ -681,6 +694,17 @@ export default function PostCard({
                 >
                   <span aria-hidden="true">🔗</span>
                   Share
+                </button>
+              )}
+              {canShare && post.claimId && (
+                <button
+                  type="button"
+                  data-testid={`share-claim-${post._id}`}
+                  onClick={handleShareClaim}
+                  className={`vv-post-menu-item w-full vv-focus-ring`}
+                >
+                  <span aria-hidden="true">🔗</span>
+                  Share claim
                 </button>
               )}
 

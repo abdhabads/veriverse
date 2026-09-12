@@ -1,346 +1,99 @@
-"use client";
+import type { Metadata } from "next";
+import { connectDB } from "@/lib/mongodb";
+import Post from "@/models/Post";
+// Side-effect import: registers the "User" model with Mongoose before
+// .populate("author") below runs. Without this, a Server Component render
+// that hasn't otherwise loaded models/User.ts yet throws MissingSchemaError,
+// which generateMetadata's own catch then silently turns into the generic
+// fallback - discovered live: a real post's metadata was falling back to
+// "Post | VeriVerse" instead of the actual author-attributed title.
+import "@/models/User";
+import { isValidObjectId } from "@/lib/validation";
+import { buildCanonicalUrl } from "@/lib/siteConfig";
+import PostPageClient from "./PostPageClient";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
-import { useRouter } from "next/navigation";
-import EmptyState from "@/components/EmptyState";
-import PageWrapper from "@/components/PageWrapper";
-import ReputationInfo from "@/components/ReputationInfo";
-import Toast from "@/components/Toast";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import PostCard, { type Post } from "@/components/PostCard";
-import CommentComposer from "@/components/CommentComposer";
-import CommentThread, { type Comment } from "@/components/CommentThread";
-import { getErrorMessage } from "@/lib/apiClient";
+const DESCRIPTION_TRUNCATE_LENGTH = 160;
 
-export default function PostDetailPage({
+// Deterministic, word-boundary-aware truncation - mirrors the Claim page's
+// own truncateForTitle helper in spirit, applied here to Post content.
+function truncateForDescription(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  const truncated = text.slice(0, maxLength);
+  const lastSpace = truncated.lastIndexOf(" ");
+  return `${lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated}…`;
+}
+
+// Metadata field groups (title/description, openGraph, twitter) each merge
+// independently against the root layout's defaults - setting only the
+// top-level title/description here would leave openGraph/twitter silently
+// inheriting the root layout's generic "VeriVerse" values instead of this
+// fallback's own text. Every branch below returns the full shape so no
+// field group is left half-overridden.
+function buildFallbackMetadata(canonicalUrl?: string): Metadata {
+  const title = "Post | VeriVerse";
+  const description = "This post could not be found.";
+  return {
+    title,
+    description,
+    ...(canonicalUrl ? { alternates: { canonical: canonicalUrl } } : {}),
+    openGraph: { title, description, type: "article", ...(canonicalUrl ? { url: canonicalUrl } : {}) },
+    twitter: { card: "summary", title, description },
+  };
+}
+
+type RouteParams = { id: string };
+
+export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ id: string }>;
-}) {
-  const router = useRouter();
+  params: Promise<RouteParams>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  if (!isValidObjectId(id)) {
+    return buildFallbackMetadata();
+  }
 
-  const [post, setPost] = useState<Post | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [message, setMessage] = useState("");
+  const canonicalUrl = buildCanonicalUrl(`/posts/${id}`);
 
-  const [newComment, setNewComment] = useState("");
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
-
-  const [replyMap, setReplyMap] = useState<Record<string, string>>({});
-  const [replyingTo, setReplyingTo] = useState<string | null>(null);
-  const [replySubmittingId, setReplySubmittingId] = useState<string | null>(null);
-
-  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-  const [editCommentText, setEditCommentText] = useState("");
-  const [editSubmittingId, setEditSubmittingId] = useState<string | null>(null);
-
-  const [commentPendingDeleteId, setCommentPendingDeleteId] = useState<string | null>(null);
-
-  const [reportReason, setReportReason] = useState("other");
-  const [reportSubmitting, setReportSubmitting] = useState(false);
-
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const currentUser =
-    typeof window !== "undefined"
-      ? JSON.parse(localStorage.getItem("user") || "null")
-      : null;
-
-  const fetchDetail = useCallback(async () => {
-    try {
-      const resolvedParams = await params;
-      const res = await axios.get(`/api/posts/${resolvedParams.id}/detail`);
-      setPost(res.data.post);
-      setComments(res.data.comments || []);
-    } catch (error: unknown) {
-      setMessage(getErrorMessage(error, "Failed to load post"));
+  try {
+    await connectDB();
+    // Smallest direct query metadata needs - content + author username only,
+    // never the full post-detail payload (comments, votes, evidence, etc.).
+    const post = await Post.findById(id).select("content author").populate("author", "username");
+    if (!post) {
+      return buildFallbackMetadata(canonicalUrl);
     }
-  }, [params]);
 
-  async function addComment(parentComment?: string | null) {
-    const content = parentComment ? replyMap[parentComment] : newComment;
-    if (!content?.trim()) return;
+    const username = post.author?.username || "a VeriVerse user";
+    const title = `Post by ${username} | VeriVerse`;
+    const description = `"${truncateForDescription(post.content, DESCRIPTION_TRUNCATE_LENGTH)}" — see verification context on VeriVerse.`;
 
-    const busy = parentComment ? replySubmittingId === parentComment : commentSubmitting;
-    if (busy) return;
-
-    if (parentComment) setReplySubmittingId(parentComment);
-    else setCommentSubmitting(true);
-
-    try {
-      const resolvedParams = await params;
-      await axios.post(
-        `/api/posts/${resolvedParams.id}/comments`,
-        {
-          content,
-          parentComment: parentComment || null,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (parentComment) {
-        setReplyMap((prev) => ({ ...prev, [parentComment]: "" }));
-        setReplyingTo(null);
-      } else {
-        setNewComment("");
-      }
-
-      await fetchDetail();
-      setMessage("Comment posted");
-    } catch (error: unknown) {
-      setMessage(getErrorMessage(error, "Failed to add comment"));
-    } finally {
-      if (parentComment) setReplySubmittingId(null);
-      else setCommentSubmitting(false);
-    }
-  }
-
-  async function votePost(voteType: "accurate" | "inaccurate") {
-    if (!post) return;
-
-    try {
-      const resolvedParams = await params;
-      const res = await axios.post(
-        `/api/posts/${resolvedParams.id}/vote`,
-        { voteType },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      setPost((prev) => (prev ? { ...prev, ...res.data.post } : prev));
-      setMessage(res.data.message || "Vote recorded.");
-    } catch (error: unknown) {
-      setMessage(getErrorMessage(error, "Failed to record vote"));
-    }
-  }
-
-  async function submitReport() {
-    if (!post || reportSubmitting) return;
-
-    setReportSubmitting(true);
-
-    try {
-      const res = await axios.post(
-        "/api/reports",
-        { postId: post._id, reason: reportReason },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      setMessage(res.data.message || "Report submitted.");
-    } catch (error: unknown) {
-      setMessage(getErrorMessage(error, "Failed to submit report"));
-    } finally {
-      setReportSubmitting(false);
-    }
-  }
-
-  function startEditComment(commentId: string, existingContent: string) {
-    setEditingCommentId(commentId);
-    setEditCommentText(existingContent);
-  }
-
-  function cancelEditComment() {
-    setEditingCommentId(null);
-    setEditCommentText("");
-  }
-
-  async function saveEditComment(commentId: string) {
-    if (editSubmittingId === commentId || !editCommentText.trim()) return;
-    setEditSubmittingId(commentId);
-
-    try {
-      await axios.patch(
-        `/api/comments/${commentId}`,
-        { content: editCommentText },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      setEditingCommentId(null);
-      setEditCommentText("");
-      await fetchDetail();
-      setMessage("Comment updated");
-    } catch (error: unknown) {
-      setMessage(getErrorMessage(error, "Failed to update comment"));
-    } finally {
-      setEditSubmittingId(null);
-    }
-  }
-
-  async function confirmDeleteComment() {
-    const commentId = commentPendingDeleteId;
-    if (!commentId) return;
-
-    try {
-      await axios.delete(`/api/comments/${commentId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      await fetchDetail();
-      setMessage("Comment deleted");
-    } catch (error: unknown) {
-      setMessage(getErrorMessage(error, "Failed to delete comment"));
-    } finally {
-      setCommentPendingDeleteId(null);
-    }
-  }
-
-  function startReply(commentId: string) {
-    setReplyingTo((prev) => (prev === commentId ? null : commentId));
-  }
-
-  function cancelReply() {
-    setReplyingTo(null);
-  }
-
-  const commentsByParent = useMemo(() => {
-    const grouped: Record<string, Comment[]> = {};
-    for (const comment of comments) {
-      const key = comment.parentComment || "root";
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(comment);
-    }
-    return grouped;
-  }, [comments]);
-
-  const commentsById = useMemo(() => {
-    const byId: Record<string, Comment> = {};
-    for (const comment of comments) {
-      byId[comment._id] = comment;
-    }
-    return byId;
-  }, [comments]);
-
-  useEffect(() => {
-    const run = async () => {
-      await fetchDetail();
+    return {
+      title,
+      description,
+      alternates: { canonical: canonicalUrl },
+      openGraph: {
+        title,
+        description,
+        url: canonicalUrl,
+        type: "article",
+      },
+      twitter: {
+        card: "summary",
+        title,
+        description,
+      },
     };
+  } catch {
+    return buildFallbackMetadata(canonicalUrl);
+  }
+}
 
-    void run();
-  }, [fetchDetail]);
-
-  return (
-    <PageWrapper
-      title="Post Detail"
-      subtitle="Review the full analysis, grounded evidence links, and discussion thread."
-    >
-      <div className="vv-action-row mb-4">
-        <button onClick={() => router.push("/feed")} className="vv-btn-secondary">
-          Back to Feed
-        </button>
-      </div>
-
-      {message && <Toast message={message} type="info" />}
-
-      {post ? (
-        <div className="mb-6">
-          {/* Author reputation stays page-owned, non-actionable context -
-              PostCard's shared author row doesn't carry this, so it's kept
-              here rather than added to every surface that reuses PostCard. */}
-          <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
-            <span>User reputation: {post.author?.reputation}</span>
-            <ReputationInfo />
-          </div>
-
-          {(post.hashtags || []).length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-2">
-              {(post.hashtags || []).map((tag) => (
-                <button key={tag} onClick={() => router.push(`/topics/${tag}`)} className="vv-pill-blue">
-                  #{tag}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <PostCard
-            variant="detail"
-            post={post}
-            currentUser={currentUser}
-            currentUserId={currentUser?.id || currentUser?._id}
-            onVote={(_postId, voteType) => votePost(voteType)}
-            onReport={currentUser && currentUser.id !== post.author?._id ? () => submitReport() : undefined}
-            reportReason={reportReason}
-            onReportReasonChange={(_postId, reason) => setReportReason(reason)}
-            comments={comments}
-            onNavigateToProfile={(username) => router.push(`/u/${username}`)}
-          />
-        </div>
-      ) : null}
-
-      <div className="vv-card p-5 mb-6">
-        <h3 className="vv-section-title mb-4">Add Comment</h3>
-
-        <CommentComposer
-          value={newComment}
-          onChange={setNewComment}
-          onSubmit={() => addComment()}
-          submitting={commentSubmitting}
-        />
-      </div>
-
-      <div className="vv-card p-5">
-        <h3 className="vv-section-title mb-4">Discussion</h3>
-
-        {comments.length === 0 ? (
-          <EmptyState
-            title="No comments yet"
-            description="Start the thread with a first response or clarification."
-          />
-        ) : (
-          <CommentThread
-            parentKey="root"
-            level={0}
-            commentsByParent={commentsByParent}
-            commentsById={commentsById}
-            currentUserId={currentUser?.id || currentUser?._id}
-            isAdmin={currentUser?.role === "admin"}
-            editingCommentId={editingCommentId}
-            editContent={editCommentText}
-            onEditContentChange={setEditCommentText}
-            onStartEdit={startEditComment}
-            onSaveEdit={saveEditComment}
-            onCancelEdit={cancelEditComment}
-            editSubmittingId={editSubmittingId}
-            onRequestDelete={setCommentPendingDeleteId}
-            replyingTo={replyingTo}
-            replyValues={replyMap}
-            onReplyValueChange={(commentId, value) =>
-              setReplyMap((prev) => ({ ...prev, [commentId]: value }))
-            }
-            onStartReply={startReply}
-            onCancelReply={cancelReply}
-            onSubmitReply={(commentId) => addComment(commentId)}
-            replySubmittingId={replySubmittingId}
-          />
-        )}
-      </div>
-
-      <ConfirmDialog
-        open={commentPendingDeleteId !== null}
-        title="Delete this comment?"
-        description="This removes the comment's content. Replies may remain in the discussion."
-        confirmLabel="Delete"
-        destructive
-        onCancel={() => setCommentPendingDeleteId(null)}
-        onConfirm={confirmDeleteComment}
-      />
-    </PageWrapper>
-  );
+export default async function PostDetailPage({
+  params,
+}: {
+  params: Promise<RouteParams>;
+}) {
+  const { id } = await params;
+  return <PostPageClient id={id} />;
 }

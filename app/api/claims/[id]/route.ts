@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
-import Claim from "@/models/Claim";
 import TrustAssessment from "@/models/TrustAssessment";
 import EvidenceObject from "@/models/EvidenceObject";
 import Post from "@/models/Post";
@@ -9,6 +8,7 @@ import UserRelation from "@/models/UserRelation";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { isValidObjectId } from "@/lib/validation";
 import { fail } from "@/lib/apiResponse";
+import { getAuthoritativeClaimAssessment } from "@/lib/claimAssessmentLookup";
 import {
   getClaimAssessmentPresentation,
   getClaimSummarySentence,
@@ -55,20 +55,16 @@ export async function GET(req: Request, context: RouteContext) {
       return fail("Invalid claim ID", 400);
     }
 
-    const claim = await Claim.findById(id);
+    // Authoritative current-assessment lookup (shared with generateMetadata,
+    // see lib/claimAssessmentLookup.ts): the exact version the Claim itself
+    // points to, never "most recently created". A missing row here (claim
+    // created but its TrustAssessment hasn't been written yet, or stale/
+    // malformed historical state) must never be papered over by silently
+    // substituting an older version as if it were current.
+    const { claim, currentAssessment } = await getAuthoritativeClaimAssessment(id);
     if (!claim) {
       return fail("Claim not found", 404);
     }
-
-    // Authoritative current-assessment lookup: the exact version the Claim
-    // itself points to, never "most recently created". A missing row here
-    // (claim created but its TrustAssessment hasn't been written yet, or
-    // stale/malformed historical state) must never be papered over by
-    // silently substituting an older version as if it were current.
-    const currentAssessment = await TrustAssessment.findOne({
-      claim: claim._id,
-      claimAssessmentVersion: claim.currentAssessmentVersion,
-    });
 
     let currentAssessmentPayload: Record<string, unknown> | null = null;
     let evidencePayload: { supporting: PublicEvidence[]; contradicting: PublicEvidence[]; context: PublicEvidence[] } = {
