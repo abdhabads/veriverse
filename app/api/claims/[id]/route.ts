@@ -167,10 +167,8 @@ export async function GET(req: Request, context: RouteContext) {
       excludedAuthorIds = relations.map((item: any) => String(item.targetUser));
     }
     const moderationExcluded = await User.find(unavailableUserFilter()).select("_id");
-    const authorExclusions = [
-      ...excludedAuthorIds,
-      ...moderationExcluded.map((item: any) => String(item._id)),
-    ];
+    const globalExclusionIds = moderationExcluded.map((item: any) => String(item._id));
+    const authorExclusions = [...excludedAuthorIds, ...globalExclusionIds];
 
     const relatedPosts = await Post.find({
       claimId: claim._id,
@@ -196,6 +194,33 @@ export async function GET(req: Request, context: RouteContext) {
       ClaimFollow.countDocuments({ claim: claim._id }),
     ]);
 
+    // P3.9: community-context aggregates describe the Claim's overall
+    // discussion, not this specific viewer's experience of it - unlike the
+    // relatedPosts list above, these three counts apply ONLY the global
+    // moderation-unavailable exclusion, never the requester's own block/mute
+    // list, so two permitted viewers looking at the same Claim always see
+    // the same numbers even if their visible relatedPosts arrays differ.
+    // All three are single-claim-scoped queries served by the existing
+    // {claimId, createdAt} Post index - no N+1, no new index needed.
+    const globalPostFilter = {
+      claimId: claim._id,
+      ...(globalExclusionIds.length > 0 ? { author: { $nin: globalExclusionIds } } : {}),
+    };
+    const [relatedPostCount, contributorIds, expertReviewedPostCount] = await Promise.all([
+      Post.countDocuments(globalPostFilter),
+      Post.distinct("author", globalPostFilter),
+      Post.countDocuments({ ...globalPostFilter, expertReviewedBy: { $ne: null } }),
+    ]);
+
+    const communityContext: Record<string, number> = {
+      relatedPostCount,
+      contributorCount: contributorIds.length,
+      followerCount,
+    };
+    if (expertReviewedPostCount > 0) {
+      communityContext.expertReviewedPostCount = expertReviewedPostCount;
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -215,6 +240,7 @@ export async function GET(req: Request, context: RouteContext) {
         history,
         relatedPosts,
         follow: { isFollowing, followerCount },
+        communityContext,
       },
       { headers: { "Cache-Control": "private, no-store" } }
     );

@@ -51,6 +51,13 @@ type HistoryItem = {
   contradictingCount: number;
 };
 
+type CommunityContext = {
+  relatedPostCount: number;
+  contributorCount: number;
+  followerCount: number;
+  expertReviewedPostCount?: number;
+};
+
 type ClaimApiResponse = {
   claim: ClaimSummary;
   assessmentStatus: "available" | "assessment_not_available";
@@ -59,6 +66,7 @@ type ClaimApiResponse = {
   history: HistoryItem[];
   relatedPosts: Post[];
   follow: { isFollowing: boolean; followerCount: number };
+  communityContext: CommunityContext;
 };
 
 function formatFollowerCount(count: number): string {
@@ -216,28 +224,7 @@ export default function ClaimPageClient({ id }: { id: string }) {
 
           {/* Current assessment */}
           <div className="vv-card p-5 mb-6">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <h3 className="vv-section-title">Current Assessment</h3>
-              {/* P3.3: prominent (visible in the same card as the verdict,
-                  above the fold) but visually secondary - a smaller, plain
-                  button, never competing with the verdict pill itself. */}
-              <div className="flex flex-col items-end gap-1">
-                <ClaimFollowButton
-                  claimId={id}
-                  isFollowing={data.follow.isFollowing}
-                  isLoggedIn={Boolean(currentUser)}
-                  onChange={handleFollowChange}
-                  onError={setMessage}
-                  testId={`claim-follow-${id}`}
-                  className="text-xs"
-                />
-                {data.follow.followerCount > 0 && (
-                  <span className="text-xs text-slate-500">
-                    {formatFollowerCount(data.follow.followerCount)}
-                  </span>
-                )}
-              </div>
-            </div>
+            <h3 className="vv-section-title mb-4">Current Assessment</h3>
             {data.assessmentStatus === "available" && data.currentAssessment ? (
               <>
                 <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -325,6 +312,58 @@ export default function ClaimPageClient({ id }: { id: string }) {
               </div>
             </div>
           )}
+
+          {/* Community context - deliberately separate from assessment/
+              evidence above: this describes social activity around the
+              Claim, never a truth signal. Follow lives here (subscription/
+              interest, not evidence) rather than in the Current Assessment
+              card. */}
+          <div className="vv-card p-5 mb-6" data-testid="claim-community-context">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <h3 className="vv-section-title">Community Context</h3>
+              <div className="flex flex-col items-end gap-1">
+                <ClaimFollowButton
+                  claimId={id}
+                  isFollowing={data.follow.isFollowing}
+                  isLoggedIn={Boolean(currentUser)}
+                  onChange={handleFollowChange}
+                  onError={setMessage}
+                  testId={`claim-follow-${id}`}
+                  className="text-xs"
+                />
+                {data.follow.followerCount > 0 && (
+                  <span className="text-xs text-slate-500">
+                    {formatFollowerCount(data.follow.followerCount)}
+                  </span>
+                )}
+              </div>
+            </div>
+            <p className="mb-3 text-xs text-veriverse-dark/60">
+              Community activity around this claim is separate from its evidence-based assessment.
+            </p>
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+              <span>
+                Posts{" "}
+                <strong className="text-veriverse-dark">{data.communityContext.relatedPostCount}</strong>
+              </span>
+              <span title="Distinct authors of Posts linked to this Claim">
+                Contributors{" "}
+                <strong className="text-veriverse-dark">{data.communityContext.contributorCount}</strong>
+              </span>
+              <span>
+                Followers{" "}
+                <strong className="text-veriverse-dark">{data.communityContext.followerCount}</strong>
+              </span>
+              {data.communityContext.expertReviewedPostCount !== undefined && (
+                <span title="Posts linked to this Claim that have completed expert review">
+                  Expert-reviewed Posts{" "}
+                  <strong className="text-veriverse-dark">
+                    {data.communityContext.expertReviewedPostCount}
+                  </strong>
+                </span>
+              )}
+            </div>
+          </div>
 
           {/* Assessment history (collapsible) */}
           <div className="vv-card p-5 mb-6">
