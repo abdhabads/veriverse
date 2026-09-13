@@ -35,6 +35,8 @@ type UserProfile = {
   rewardPoints?: number;
   role?: string;
   badges?: string[];
+  expertiseDomains?: string[];
+  expertCredentialSummary?: string;
   moderationStatus?: string;
   suspendedUntil?: string | null;
 };
@@ -154,6 +156,8 @@ export default function ProfilePage() {
             followingCount={followCounts?.following}
             onFollowersClick={() => router.push(`/u/${profile.username}/followers`)}
             onFollowingClick={() => router.push(`/u/${profile.username}/following`)}
+            expertiseDomains={profile.expertiseDomains}
+            expertCredentialSummary={profile.expertCredentialSummary}
             actions={
               <>
                 <button

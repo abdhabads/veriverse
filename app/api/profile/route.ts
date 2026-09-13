@@ -55,6 +55,8 @@ export async function GET(req: Request) {
         rewardPoints: user.rewardPoints,
         badges: user.badges,
         role: user.role,
+        expertiseDomains: user.expertiseDomains,
+        expertCredentialSummary: user.expertCredentialSummary,
         moderationStatus: user.moderationStatus,
         suspendedUntil: user.suspendedUntil,
       },

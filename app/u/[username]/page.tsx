@@ -29,6 +29,8 @@ type User = {
   avatarUrl?: string;
   badges?: string[];
   role?: string;
+  expertiseDomains?: string[];
+  expertCredentialSummary?: string;
 };
 
 type Relation = {
@@ -255,6 +257,8 @@ export default function PublicProfilePage({
             followingCount={followCounts?.following}
             onFollowersClick={() => router.push(`/u/${user.username}/followers`)}
             onFollowingClick={() => router.push(`/u/${user.username}/following`)}
+            expertiseDomains={user.expertiseDomains}
+            expertCredentialSummary={user.expertCredentialSummary}
             actions={
               currentUserChecked && currentUser && !isViewingOwnProfile ? (
                 <>

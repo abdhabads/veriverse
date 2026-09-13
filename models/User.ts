@@ -1,4 +1,5 @@
 import { Schema, model, models } from "mongoose";
+import { EXPERTISE_DOMAINS } from "@/lib/expertiseDomains";
 
 const UserSchema = new Schema(
   {
@@ -50,6 +51,27 @@ const UserSchema = new Schema(
       type: String,
       default: "",
       trim: true,
+    },
+    // P3.6: which subject domain(s) an expert-role user's recognized
+    // expertise covers - additive to `role`, never a replacement for it.
+    // Only meaningful when role === "expert"; admin-assigned only (see
+    // app/api/admin/users/[id]/route.ts's set_expertise action), never
+    // self-declared via app/api/profile/route.ts. Reuses Claim's own
+    // `domain` vocabulary (lib/expertiseDomains.ts) rather than a second
+    // taxonomy.
+    expertiseDomains: {
+      type: [String],
+      enum: EXPERTISE_DOMAINS,
+      default: [],
+    },
+    // Short, admin-authored context explaining the recognized expertise
+    // (e.g. "Practicing physician, 12 years") - never a document/file, and
+    // never a review score or trust signal. Same length convention as bio.
+    expertCredentialSummary: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 300,
     },
     interests: {
       type: [String],

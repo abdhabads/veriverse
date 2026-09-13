@@ -5,6 +5,7 @@ import AuditLog from "@/models/AuditLog";
 import Notification from "@/models/Notification";
 import { cleanOptionalString, isValidObjectId } from "@/lib/validation";
 import { ok, fail } from "@/lib/apiResponse";
+import { EXPERTISE_DOMAINS, isExpertiseDomain } from "@/lib/expertiseDomains";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -37,6 +38,8 @@ export async function PATCH(req: Request, context: RouteContext) {
     }
     const action = typeof body.action === "string" ? body.action : "";
     const role = typeof body.role === "string" ? body.role : "";
+    const expertiseDomains = Array.isArray(body.expertiseDomains) ? body.expertiseDomains : [];
+    const credentialSummary = cleanOptionalString(body.credentialSummary, { maxLength: 300 });
     const note = cleanOptionalString(body.note, { maxLength: 1000 });
     const suspendHours =
       typeof body.suspendHours === "number" && body.suspendHours > 0
@@ -85,6 +88,47 @@ export async function PATCH(req: Request, context: RouteContext) {
           _id: targetUser._id,
           username: targetUser.username,
           role: targetUser.role,
+        },
+      });
+    }
+
+    // P3.6: domain-scoped expert identity is admin-assigned only, through
+    // this same authorized/self-protected route - never through
+    // app/api/profile/route.ts (which does not accept these fields at all),
+    // so a user can never self-certify their own expertise. Requires the
+    // target to already be (or be becoming, via a prior set_role call) an
+    // expert - expertise metadata on a non-expert user would be orphaned
+    // and misleading.
+    if (action === "set_expertise") {
+      if (targetUser.role !== "expert") {
+        return fail("User must have the expert role before expertise domains can be assigned", 400);
+      }
+
+      if (!expertiseDomains.every(isExpertiseDomain)) {
+        return fail(`Invalid expertise domain - must be one of: ${EXPERTISE_DOMAINS.join(", ")}`, 400);
+      }
+
+      targetUser.expertiseDomains = expertiseDomains;
+      targetUser.expertCredentialSummary = credentialSummary;
+      await targetUser.save();
+
+      await AuditLog.create({
+        actor: admin._id,
+        actorRole: admin.role,
+        actionType: "admin_expertise_assigned",
+        targetUser: targetUser._id,
+        note:
+          note ||
+          `Admin set expertise domains for ${targetUser.username} to [${expertiseDomains.join(", ")}].`,
+      });
+
+      return ok({
+        message: "User expertise updated successfully",
+        user: {
+          _id: targetUser._id,
+          username: targetUser.username,
+          expertiseDomains: targetUser.expertiseDomains,
+          expertCredentialSummary: targetUser.expertCredentialSummary,
         },
       });
     }

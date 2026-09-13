@@ -10,6 +10,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import ExpertBadge from "@/components/ExpertBadge";
+import { EXPERTISE_DOMAIN_LABELS } from "@/lib/expertiseDomains";
 
 type Props = {
   username: string;
@@ -21,6 +23,12 @@ type Props = {
   onFollowersClick?: () => void;
   onFollowingClick?: () => void;
   actions?: ReactNode;
+  // P3.6: identity-adjacent, not reputation-adjacent - deliberately placed
+  // here rather than in ProfileStats, which is reputation/gamification-
+  // flavored. Omitted (both undefined/empty) for every ordinary user, whose
+  // profile must render exactly as before.
+  expertiseDomains?: string[];
+  expertCredentialSummary?: string;
 };
 
 export default function ProfileHeader({
@@ -33,7 +41,10 @@ export default function ProfileHeader({
   onFollowersClick,
   onFollowingClick,
   actions,
+  expertiseDomains,
+  expertCredentialSummary,
 }: Props) {
+  const isExpert = Boolean(expertiseDomains && expertiseDomains.length > 0);
   return (
     <div className="vv-card p-6">
       <div className="mb-4 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -52,6 +63,14 @@ export default function ProfileHeader({
 
           <div>
             <h2 className="text-2xl font-semibold text-veriverse-dark">{username}</h2>
+            {isExpert && (
+              <div className="mt-1.5">
+                <ExpertBadge domains={expertiseDomains!} domainLabels={EXPERTISE_DOMAIN_LABELS} />
+                {expertCredentialSummary && (
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{expertCredentialSummary}</p>
+                )}
+              </div>
+            )}
             {followerCount != null && followingCount != null && (
               <p className="vv-subtitle mt-1">
                 <button

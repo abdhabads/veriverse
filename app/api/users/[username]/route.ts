@@ -17,7 +17,7 @@ export async function GET(req: Request, context: RouteContext) {
     // denylist (e.g. "-password"): new User fields must be explicitly
     // reviewed before they become publicly exposed.
     const user = await User.findOne({ username }).select(
-      "username bio avatarUrl reputation rewardPoints badges"
+      "username bio avatarUrl reputation rewardPoints badges expertiseDomains expertCredentialSummary"
     );
     if (!user) {
       return NextResponse.json(
