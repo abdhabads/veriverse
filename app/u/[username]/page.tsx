@@ -33,6 +33,12 @@ type User = {
   expertCredentialSummary?: string;
 };
 
+type Contribution = {
+  posts: number;
+  claims: number;
+  expertReviews?: number;
+};
+
 type Relation = {
   relationType: "block" | "mute";
   targetUser: {
@@ -55,6 +61,7 @@ export default function PublicProfilePage({
   const router = useRouter();
   const startConversation = useStartConversation();
   const [user, setUser] = useState<User | null>(null);
+  const [contribution, setContribution] = useState<Contribution | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -119,6 +126,7 @@ export default function PublicProfilePage({
       const res = await axios.get(`/api/users/${resolvedParams.username}`);
       setUser(res.data.user);
       setPosts(res.data.posts || []);
+      setContribution(res.data.contribution || null);
     } catch (error: any) {
       setNotFound(true);
       setMessage(error?.response?.data?.message || "Failed to load public profile");
@@ -317,6 +325,7 @@ export default function PublicProfilePage({
             reputation={user.reputation}
             rewardPoints={user.rewardPoints}
             badges={user.badges || []}
+            contribution={contribution || undefined}
           />
 
           <div className="vv-card p-6">

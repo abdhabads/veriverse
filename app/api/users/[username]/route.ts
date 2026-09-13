@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import Post from "@/models/Post";
+import { getContributionSummary } from "@/lib/contributionSummary";
 
 type RouteContext = {
   params: Promise<{ username: string }>;
@@ -36,10 +37,13 @@ export async function GET(req: Request, context: RouteContext) {
       .sort({ createdAt: -1 })
       .populate("author", "username reputation badges");
 
+    const contribution = await getContributionSummary(String(user._id), user.role === "expert");
+
     return NextResponse.json({
       success: true,
       user,
       posts,
+      contribution,
     });
   } catch {
     return NextResponse.json(

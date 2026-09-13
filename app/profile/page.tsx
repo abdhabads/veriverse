@@ -41,6 +41,12 @@ type UserProfile = {
   suspendedUntil?: string | null;
 };
 
+type Contribution = {
+  posts: number;
+  claims: number;
+  expertReviews?: number;
+};
+
 // Own-profile posts come back without an author object (redundant - it's
 // always the viewer). Reuses PostCard's own Post type otherwise, rather
 // than a second, looser (`status: string`) definition; `author` is
@@ -61,6 +67,7 @@ export default function ProfilePage() {
   } = usePageState();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [contribution, setContribution] = useState<Contribution | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   const [postPendingDeleteId, setPostPendingDeleteId] = useState<string | null>(null);
@@ -83,6 +90,7 @@ export default function ProfilePage() {
 
       setProfile(data.user || null);
       setPosts(data.posts || []);
+      setContribution(data.contribution || null);
 
       if (data.user?._id) {
         api
@@ -183,6 +191,7 @@ export default function ProfilePage() {
             reputation={profile.reputation || 0}
             rewardPoints={profile.rewardPoints || 0}
             badges={profile.badges || []}
+            contribution={contribution || undefined}
             onViewHistory={() => router.push("/reputation")}
           />
 

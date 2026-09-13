@@ -6,6 +6,7 @@ import { getUserFromRequest, requireActiveUser } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rateLimitGuard";
 import { getRateLimitKey } from "@/lib/requestIdentity";
 import { escapeRegexLiteral, isValidUsername } from "@/lib/validation";
+import { getContributionSummary } from "@/lib/contributionSummary";
 
 const MAX_AVATAR_DATA_URL_LENGTH = 800_000;
 
@@ -43,6 +44,8 @@ export async function GET(req: Request) {
       .sort({ createdAt: -1 })
       .limit(100);
 
+    const contribution = await getContributionSummary(String(user._id), user.role === "expert");
+
     return NextResponse.json({
       success: true,
       user: {
@@ -61,6 +64,7 @@ export async function GET(req: Request) {
         suspendedUntil: user.suspendedUntil,
       },
       posts,
+      contribution,
     });
   } catch {
     return NextResponse.json(

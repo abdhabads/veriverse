@@ -8,6 +8,12 @@
 // own disclosure text, which this keeps using unchanged.
 import ReputationInfo from "@/components/ReputationInfo";
 
+type Contribution = {
+  posts: number;
+  claims: number;
+  expertReviews?: number;
+};
+
 type Props = {
   reputation: number;
   rewardPoints: number;
@@ -17,11 +23,23 @@ type Props = {
   // app/u/[username]/page.tsx (public profile), so another user's page can
   // never render this link.
   onViewHistory?: () => void;
+  // P3.8: descriptive authorship-volume counts, deliberately rendered as a
+  // small subordinate row (not another pair of large tiles) so the profile
+  // doesn't start reading as an analytics dashboard. `expertReviews` is
+  // only present (and only rendered) for a Verified Expert - its absence,
+  // not a zero value, is what keeps it off an ordinary profile.
+  contribution?: Contribution;
 };
 
-export default function ProfileStats({ reputation, rewardPoints, badges, onViewHistory }: Props) {
+export default function ProfileStats({
+  reputation,
+  rewardPoints,
+  badges,
+  onViewHistory,
+  contribution,
+}: Props) {
   return (
-    <div className="vv-card p-5">
+    <div className="vv-card p-5" data-testid="profile-stats">
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
         <div className="vv-card-soft p-3">
           <p className="text-xs text-slate-500">Reputation</p>
@@ -40,6 +58,23 @@ export default function ProfileStats({ reputation, rewardPoints, badges, onViewH
           <p className="mt-1 text-xs text-slate-500">Points earned through platform contribution.</p>
         </div>
       </div>
+
+      {contribution && (
+        <div className="mb-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+          <span>
+            Posts <strong className="text-veriverse-dark">{Number(contribution.posts || 0)}</strong>
+          </span>
+          <span title="Distinct Claims linked from this user's Posts">
+            Claims <strong className="text-veriverse-dark">{Number(contribution.claims || 0)}</strong>
+          </span>
+          {contribution.expertReviews !== undefined && (
+            <span title="Completed Post-scoped expert reviews">
+              Expert Reviews{" "}
+              <strong className="text-veriverse-dark">{Number(contribution.expertReviews || 0)}</strong>
+            </span>
+          )}
+        </div>
+      )}
 
       <div>
         <p className="mb-2 text-xs text-slate-500">Badges</p>
