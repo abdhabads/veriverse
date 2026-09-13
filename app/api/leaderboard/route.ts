@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
+import UserRelation from "@/models/UserRelation";
+import { getUserIdFromRequest } from "@/lib/auth";
 
 const now = () => new Date();
 
@@ -20,10 +22,30 @@ function availableUserFilter() {
   };
 }
 
-export async function GET() {
+// P3.7: Top Contributors respects the viewer's own block/mute list, same
+// established pattern as Search/Trending/Experts (UserRelation exclusion on
+// top of moderation exclusion) - anonymous viewers see moderation-filtered
+// results only. Ranking itself (reputation desc, rewardPoints desc, limit
+// 20) is unchanged; only which rows a given viewer sees can differ, which is
+// exactly why this list must never be presented as an immutable global rank.
+export async function GET(req: Request) {
   try {
     await connectDB();
-    const users = await User.find(availableUserFilter())
+    const requesterId = getUserIdFromRequest(req);
+
+    let excludedIds: string[] = [];
+    if (requesterId) {
+      const relations = await UserRelation.find({
+        sourceUser: requesterId,
+        relationType: { $in: ["block", "mute"] },
+      }).select("targetUser");
+      excludedIds = relations.map((item: any) => String(item.targetUser));
+    }
+
+    const users = await User.find({
+      ...availableUserFilter(),
+      ...(excludedIds.length > 0 ? { _id: { $nin: excludedIds } } : {}),
+    })
       .select("username reputation rewardPoints badges role createdAt")
       .sort({ reputation: -1, rewardPoints: -1 })
       .limit(20);

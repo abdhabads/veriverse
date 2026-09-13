@@ -49,13 +49,13 @@ export default function LeaderboardPage() {
 
   return (
     <PageWrapper
-      title="Leaderboard"
+      title="Top Contributors"
       subtitle="See contributors with the highest reputation and reward activity on VeriVerse."
     >
       {message && <Toast message={message} type={messageType} />}
 
       {loading ? (
-        <LoadingSpinner label="Loading leaderboard..." />
+        <LoadingSpinner label="Loading top contributors..." />
       ) : (
         <div className="space-y-6">
           <div className="flex justify-end">
@@ -68,13 +68,14 @@ export default function LeaderboardPage() {
           </div>
 
           <p className="text-xs text-slate-500">
-            Leaderboard position reflects historical participation outcomes. It does not
-            determine whether an individual claim is true.
+            This list reflects historical participation outcomes and is filtered by your own
+            block/mute settings, so its order is a personalized view rather than a fixed global
+            rank. It does not determine whether an individual claim is true.
           </p>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="vv-card p-5">
-              <p className="text-sm text-slate-500 mb-1">Ranked Accounts</p>
+              <p className="text-sm text-slate-500 mb-1">Contributors Shown</p>
               <p className="text-4xl font-bold text-veriverse-dark">{users.length}</p>
             </div>
 
@@ -95,17 +96,16 @@ export default function LeaderboardPage() {
 
           {users.length === 0 ? (
             <EmptyState
-              title="No leaderboard entries yet"
-              description="Leaderboard rankings will appear as members build trust and rewards on the platform."
+              title="No contributors yet"
+              description="Top contributors will appear here as members build reputation and rewards on the platform."
             />
           ) : (
             <div className="space-y-3">
-              {users.map((user, index) => (
+              {users.map((user) => (
                 <div key={user._id} className="vv-card p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className="vv-pill-purple">#{index + 1}</span>
                         <p className="font-medium text-veriverse-dark">{user.username}</p>
                       </div>
 

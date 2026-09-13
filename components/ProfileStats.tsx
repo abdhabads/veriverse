@@ -12,9 +12,14 @@ type Props = {
   reputation: number;
   rewardPoints: number;
   badges: string[];
+  // P3.7: only the account owner should see a path into their own private
+  // reputation history (app/reputation/page.tsx) - omitted entirely by
+  // app/u/[username]/page.tsx (public profile), so another user's page can
+  // never render this link.
+  onViewHistory?: () => void;
 };
 
-export default function ProfileStats({ reputation, rewardPoints, badges }: Props) {
+export default function ProfileStats({ reputation, rewardPoints, badges, onViewHistory }: Props) {
   return (
     <div className="vv-card p-5">
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
@@ -22,6 +27,11 @@ export default function ProfileStats({ reputation, rewardPoints, badges }: Props
           <p className="text-xs text-slate-500">Reputation</p>
           <p className="text-xl font-semibold text-veriverse-dark">{Number(reputation || 0)}</p>
           <ReputationInfo className="mt-1" />
+          {onViewHistory && (
+            <button type="button" onClick={onViewHistory} className="vv-link mt-1 block text-xs">
+              View reputation history
+            </button>
+          )}
         </div>
 
         <div className="vv-card-soft p-3">

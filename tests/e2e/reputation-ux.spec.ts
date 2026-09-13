@@ -5,6 +5,7 @@ import { test, expect, request as playwrightRequest } from "@playwright/test";
 import User from "@/models/User";
 import Post from "@/models/Post";
 import ReputationLog from "@/models/ReputationLog";
+import UserRelation from "@/models/UserRelation";
 import { login } from "./helpers";
 
 dotenv.config({ path: ".env.test.local" });
@@ -195,4 +196,207 @@ test("GET /api/reputation succeeds and returns a populated referencePost when a 
   );
 
   await api.dispose();
+});
+
+// ---------------------------------------------------------------------------
+// P3.7 - Top Contributors: viewer-specific block/mute
+// ---------------------------------------------------------------------------
+
+test("Top Contributors excludes a viewer-blocked user for that viewer only, while an anonymous viewer still sees them", async ({
+  baseURL,
+}) => {
+  await mongoose.connect(process.env.MONGO_URI!);
+  const usera = await User.findOne({ username: "usera" });
+  const target = await User.findOne({ username: "lb_active" });
+  await UserRelation.create({ sourceUser: usera!._id, targetUser: target!._id, relationType: "block" });
+  await mongoose.disconnect();
+
+  const anonymousApi = await playwrightRequest.newContext({ baseURL });
+  const anonymousBody = await (await anonymousApi.get("/api/leaderboard")).json();
+  expect(anonymousBody.users.map((u: any) => u.username)).toContain("lb_active");
+  await anonymousApi.dispose();
+
+  const viewerApi = await playwrightRequest.newContext({ baseURL });
+  await viewerApi.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+  const viewerBody = await (await viewerApi.get("/api/leaderboard")).json();
+  expect(viewerBody.users.map((u: any) => u.username)).not.toContain("lb_active");
+  await viewerApi.dispose();
+});
+
+test("Top Contributors excludes a viewer-muted user for that viewer only", async ({ baseURL }) => {
+  await mongoose.connect(process.env.MONGO_URI!);
+  const usera = await User.findOne({ username: "usera" });
+  const target = await User.findOne({ username: "lb_tie_a" });
+  await UserRelation.create({ sourceUser: usera!._id, targetUser: target!._id, relationType: "mute" });
+  await mongoose.disconnect();
+
+  const viewerApi = await playwrightRequest.newContext({ baseURL });
+  await viewerApi.post("/api/login", { data: { email: "usera@test.com", password: "Password123!" } });
+  const viewerBody = await (await viewerApi.get("/api/leaderboard")).json();
+  expect(viewerBody.users.map((u: any) => u.username)).not.toContain("lb_tie_a");
+  await viewerApi.dispose();
+});
+
+test("ranking mechanics (reputation desc, rewardPoints tie-break, limit) are unchanged by block/mute filtering", async ({
+  baseURL,
+}) => {
+  const api = await playwrightRequest.newContext({ baseURL });
+  const res = await api.get("/api/leaderboard");
+  const json = await res.json();
+  expect(json.users.length).toBeLessThanOrEqual(20);
+  for (let i = 1; i < json.users.length; i++) {
+    expect(json.users[i].reputation).toBeLessThanOrEqual(json.users[i - 1].reputation);
+  }
+  await api.dispose();
+});
+
+// ---------------------------------------------------------------------------
+// P3.7 - Top Contributors terminology
+// ---------------------------------------------------------------------------
+
+test("the renamed Top Contributors page shows the new terminology, with no Trust Score/Truth Score/Most Trusted wording", async ({
+  page,
+}) => {
+  await login(page, "usera@test.com", "Password123!");
+  await page.goto("/leaderboard");
+
+  await expect(page.getByRole("heading", { name: "Top Contributors" })).toBeVisible({ timeout: 15_000 });
+
+  const bodyText = await page.evaluate(() => document.body.innerText.toLowerCase());
+  expect(bodyText).not.toContain("trust score");
+  expect(bodyText).not.toContain("truth score");
+  expect(bodyText).not.toContain("most trusted");
+});
+
+// ---------------------------------------------------------------------------
+// P3.7 - Reputation history page: human-readable mapping, safe fields only
+// ---------------------------------------------------------------------------
+
+test("reputation history renders human-readable outcome labels and signed deltas, never raw internal fields", async ({
+  page,
+}) => {
+  await mongoose.connect(process.env.MONGO_URI!);
+  const usera = await User.findOne({ username: "usera" });
+  await ReputationLog.create([
+    {
+      user: usera!._id,
+      actionType: "accurate_post",
+      pointsChange: 5,
+      reason: "Community finalized your post as verified.",
+      trustDecisionVersion: 3,
+      trustEventKey: `post:${new mongoose.Types.ObjectId()}:v3:community_finalize_verified`,
+    },
+    {
+      user: usera!._id,
+      actionType: "false_post_penalty",
+      pointsChange: -5,
+      reason: "Community finalized your post as false.",
+      trustDecisionVersion: 4,
+      trustEventKey: `post:${new mongoose.Types.ObjectId()}:v4:community_finalize_false`,
+    },
+  ]);
+  await mongoose.disconnect();
+
+  await login(page, "usera@test.com", "Password123!");
+  await page.goto("/reputation");
+
+  await expect(page.getByText("Your post was verified by the community")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Your post was marked false by the community")).toBeVisible();
+  await expect(page.getByText("+5", { exact: true })).toBeVisible();
+  await expect(page.getByText("-5", { exact: true })).toBeVisible();
+
+  const bodyText = await page.evaluate(() => document.body.innerText);
+  expect(bodyText).not.toContain("accurate_post");
+  expect(bodyText).not.toContain("false_post_penalty");
+  expect(bodyText).not.toContain("Community finalized your post as verified."); // raw `reason`
+  expect(bodyText).not.toContain("trustEventKey");
+  expect(bodyText.toLowerCase()).not.toContain("version: 3");
+  expect(bodyText.toLowerCase()).not.toContain("version: 4");
+
+  await expect(page.getByText(/weight of community votes/i)).toBeVisible();
+
+  await mongoose.connect(process.env.MONGO_URI!);
+  await ReputationLog.deleteMany({ user: usera!._id });
+  await mongoose.disconnect();
+});
+
+test("an account with zero recorded reputation activity gets an honest empty state, not a fabricated explanation", async ({
+  page,
+}) => {
+  await login(page, "usera@test.com", "Password123!");
+  await page.goto("/reputation");
+
+  await expect(
+    page.getByText("No reputation activity has been recorded for this account yet.").first()
+  ).toBeVisible({ timeout: 15_000 });
+});
+
+// ---------------------------------------------------------------------------
+// P3.7 - Public profile stays summary-only; owner-only history affordance
+// ---------------------------------------------------------------------------
+
+test("own profile shows a View reputation history link; the public profile of another user does not", async ({
+  page,
+}) => {
+  await login(page, "usera@test.com", "Password123!");
+
+  await page.goto("/profile");
+  await expect(page.getByRole("button", { name: "View reputation history" })).toBeVisible({ timeout: 15_000 });
+
+  await page.goto("/u/admin1");
+  await expect(page.getByRole("heading", { name: "admin1" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "View reputation history" })).not.toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// P3.7 - Isolation: presentation-only, no side effects
+// ---------------------------------------------------------------------------
+
+test("visiting the reputation and Top Contributors pages does not mutate reputation, rewardPoints, or expert identity", async ({
+  page,
+}) => {
+  await mongoose.connect(process.env.MONGO_URI!);
+  const before = await User.findOne({ username: "usera" }).select(
+    "reputation rewardPoints role expertiseDomains"
+  );
+  const beforeSnapshot = before!.toObject();
+  await mongoose.disconnect();
+
+  await login(page, "usera@test.com", "Password123!");
+  await page.goto("/reputation");
+  await page.goto("/leaderboard");
+  await page.goto("/profile");
+
+  await mongoose.connect(process.env.MONGO_URI!);
+  const after = await User.findOne({ username: "usera" }).select(
+    "reputation rewardPoints role expertiseDomains"
+  );
+  expect(after!.reputation).toBe(beforeSnapshot.reputation);
+  expect(after!.rewardPoints).toBe(beforeSnapshot.rewardPoints);
+  expect(after!.role).toBe(beforeSnapshot.role);
+  expect(after!.expertiseDomains).toEqual(beforeSnapshot.expertiseDomains);
+  await mongoose.disconnect();
+});
+
+// ---------------------------------------------------------------------------
+// P3.7 - Rendered smoke: own profile -> View reputation history -> /reputation
+// ---------------------------------------------------------------------------
+
+test("rendered smoke: own profile links through to /reputation, showing the current number, explanation, and activity", async ({
+  page,
+}) => {
+  await login(page, "usera@test.com", "Password123!");
+  await page.goto("/profile");
+
+  await Promise.all([
+    page.waitForURL(/\/reputation/),
+    page.getByRole("button", { name: "View reputation history" }).click(),
+  ]);
+
+  await expect(page.getByText("Current Reputation")).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText("Reputation reflects past participation on VeriVerse.", { exact: false })
+  ).toBeVisible();
+  await expect(page.getByText(/weight of community votes/i)).toBeVisible();
+  await expect(page.getByText("Recorded reputation activity")).toBeVisible();
 });

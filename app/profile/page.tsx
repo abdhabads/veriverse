@@ -183,6 +183,7 @@ export default function ProfilePage() {
             reputation={profile.reputation || 0}
             rewardPoints={profile.rewardPoints || 0}
             badges={profile.badges || []}
+            onViewHistory={() => router.push("/reputation")}
           />
 
           {suggestions.length > 0 && (

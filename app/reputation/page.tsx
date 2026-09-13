@@ -11,7 +11,12 @@ import { usePageState } from "@/hooks/usePageState";
 import { fetchMyReputationLogs } from "@/lib/profileTrustClient";
 import { getErrorMessage } from "@/lib/apiClient";
 import ReputationInfo from "@/components/ReputationInfo";
+import { getReputationActionLabel, REPUTATION_VOTING_WEIGHT_DISCLOSURE } from "@/lib/reputationPresentation";
 
+// `reason` and `trustEventKey` are intentionally typed but never rendered -
+// both are free-text/internal settlement fields (see
+// lib/reputationPresentation.ts's header comment). `trustDecisionVersion`
+// is likewise received but not displayed.
 type ReputationLog = {
   _id: string;
   actionType: string;
@@ -81,6 +86,7 @@ export default function ReputationPage() {
             <p className="text-sm text-slate-500 mb-1">Current Reputation</p>
             <p className="text-4xl font-bold text-veriverse-dark">{total}</p>
             <ReputationInfo variant="full" className="mt-2" />
+            <p className="mt-1 text-xs text-slate-500">{REPUTATION_VOTING_WEIGHT_DISCLOSURE}</p>
           </div>
 
           <details className="vv-card p-5">
@@ -106,52 +112,57 @@ export default function ReputationPage() {
             </div>
           </details>
 
-          {logs.length === 0 ? (
-            <EmptyState
-              title="No reputation history yet"
-              description="Your reputation changes will appear here as you participate."
-            />
-          ) : (
-            <div className="space-y-3">
-              {logs.map((log) => (
-                <div key={log._id} className="vv-card p-5">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <p className="font-medium text-veriverse-dark">{log.actionType}</p>
-                    <span
-                      className={
-                        Number(log.pointsChange) >= 0 ? "vv-pill-green" : "vv-pill-red"
-                      }
-                    >
-                      {Number(log.pointsChange) > 0 ? "+" : ""}
-                      {Number(log.pointsChange)}
-                    </span>
-                  </div>
+          <div>
+            <h3 className="vv-section-title mb-1">Recorded reputation activity</h3>
+            {logs.length > 0 && (
+              <p className="mb-3 text-xs text-slate-500">
+                This is the activity VeriVerse has a record of - it may not cover every change to
+                older accounts.
+              </p>
+            )}
 
-                  {log.reason && (
-                    <p className="text-sm text-slate-700 mb-2">{log.reason}</p>
-                  )}
-
-                  {log.referencePost?.content && (
-                    <div className="vv-card-soft p-3 mb-2">
-                      <p className="text-xs text-slate-500 mb-1">Related Post</p>
-                      <p className="text-sm text-slate-700">
-                        {log.referencePost.content}
+            {logs.length === 0 ? (
+              <EmptyState
+                title="No reputation activity has been recorded for this account yet."
+                description="Your reputation changes will appear here as posts you authored reach finalized outcomes."
+              />
+            ) : (
+              <div className="space-y-3">
+                {logs.map((log) => (
+                  <div key={log._id} className="vv-card p-5">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <p className="font-medium text-veriverse-dark">
+                        {getReputationActionLabel(log.actionType)}
                       </p>
+                      <span
+                        className={
+                          Number(log.pointsChange) >= 0 ? "vv-pill-green" : "vv-pill-red"
+                        }
+                      >
+                        {Number(log.pointsChange) > 0 ? "+" : ""}
+                        {Number(log.pointsChange)}
+                      </span>
                     </div>
-                  )}
 
-                  <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                    {log.trustDecisionVersion && (
-                      <span>Version: {log.trustDecisionVersion}</span>
+                    {log.referencePost?.content && (
+                      <div className="vv-card-soft p-3 mb-2">
+                        <p className="text-xs text-slate-500 mb-1">Related Post</p>
+                        <p className="text-sm text-slate-700">
+                          {log.referencePost.content}
+                        </p>
+                      </div>
                     )}
+
                     {log.createdAt && (
-                      <span>{new Date(log.createdAt).toLocaleString()}</span>
+                      <p className="text-xs text-slate-500">
+                        {new Date(log.createdAt).toLocaleString()}
+                      </p>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </PageWrapper>
