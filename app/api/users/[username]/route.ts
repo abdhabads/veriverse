@@ -16,8 +16,14 @@ export async function GET(req: Request, context: RouteContext) {
     // field returned here is visible to anyone. Never widen this with a
     // denylist (e.g. "-password"): new User fields must be explicitly
     // reviewed before they become publicly exposed.
+    // `role` is included so the client can determine actual expert identity
+    // (role === "expert") rather than inferring it from whether
+    // expertiseDomains happens to be non-empty - a recognized expert with no
+    // domain assigned yet is still an expert. This discloses nothing new:
+    // role === "expert" is already implied by mere presence in the public
+    // /api/experts directory.
     const user = await User.findOne({ username }).select(
-      "username bio avatarUrl reputation rewardPoints badges expertiseDomains expertCredentialSummary"
+      "username bio avatarUrl reputation rewardPoints badges role expertiseDomains expertCredentialSummary"
     );
     if (!user) {
       return NextResponse.json(

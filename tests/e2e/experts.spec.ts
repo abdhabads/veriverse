@@ -379,6 +379,23 @@ test("ordinary user's profile is unchanged - no expert badge, no domain, no cred
   await expect(page.getByText("Verified Expert")).not.toBeVisible();
 });
 
+// Regression for the discovered production inconsistency: a recognized
+// expert (role === "expert") with no expertiseDomains assigned yet must
+// still show the Verified Expert badge on their own profile - badge
+// visibility must never be inferred from domain/credential enrichment.
+test("an expert with zero assigned domains still shows the Verified Expert badge on their profile", async ({
+  page,
+}) => {
+  await mongoose.connect(process.env.MONGO_URI!);
+  await User.updateOne({ username: "expert1" }, { $set: { expertiseDomains: [], expertCredentialSummary: "" } });
+  await mongoose.disconnect();
+
+  await login(page, "usera@test.com", "Password123!");
+  await page.goto("/u/expert1");
+  await expect(page.getByRole("heading", { name: "expert1" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Verified Expert")).toBeVisible();
+});
+
 // ---------------------------------------------------------------------------
 // Rendered smoke: /experts -> Expert card -> Profile
 // ---------------------------------------------------------------------------

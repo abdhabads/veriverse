@@ -156,6 +156,7 @@ export default function ProfilePage() {
             followingCount={followCounts?.following}
             onFollowersClick={() => router.push(`/u/${profile.username}/followers`)}
             onFollowingClick={() => router.push(`/u/${profile.username}/following`)}
+            isExpert={profile.role === "expert"}
             expertiseDomains={profile.expertiseDomains}
             expertCredentialSummary={profile.expertCredentialSummary}
             actions={

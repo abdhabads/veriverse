@@ -25,8 +25,16 @@ type Props = {
   actions?: ReactNode;
   // P3.6: identity-adjacent, not reputation-adjacent - deliberately placed
   // here rather than in ProfileStats, which is reputation/gamification-
-  // flavored. Omitted (both undefined/empty) for every ordinary user, whose
-  // profile must render exactly as before.
+  // flavored. Omitted for every ordinary user, whose profile must render
+  // exactly as before.
+  //
+  // `isExpert` is the sole gate for whether the badge itself appears, and
+  // must come from the actual authoritative signal (role === "expert"),
+  // never inferred from expertiseDomains/expertCredentialSummary - a
+  // recognized expert with no domain assigned yet is still an expert.
+  // expertiseDomains/expertCredentialSummary are independent, optional
+  // enrichment: each renders only when non-empty, regardless of the other.
+  isExpert?: boolean;
   expertiseDomains?: string[];
   expertCredentialSummary?: string;
 };
@@ -41,10 +49,10 @@ export default function ProfileHeader({
   onFollowersClick,
   onFollowingClick,
   actions,
+  isExpert,
   expertiseDomains,
   expertCredentialSummary,
 }: Props) {
-  const isExpert = Boolean(expertiseDomains && expertiseDomains.length > 0);
   return (
     <div className="vv-card p-6">
       <div className="mb-4 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -65,7 +73,7 @@ export default function ProfileHeader({
             <h2 className="text-2xl font-semibold text-veriverse-dark">{username}</h2>
             {isExpert && (
               <div className="mt-1.5">
-                <ExpertBadge domains={expertiseDomains!} domainLabels={EXPERTISE_DOMAIN_LABELS} />
+                <ExpertBadge domains={expertiseDomains || []} domainLabels={EXPERTISE_DOMAIN_LABELS} />
                 {expertCredentialSummary && (
                   <p className="mt-1 text-xs leading-5 text-slate-600">{expertCredentialSummary}</p>
                 )}
