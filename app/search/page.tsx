@@ -9,6 +9,7 @@ import PageWrapper from "@/components/PageWrapper";
 import Toast from "@/components/Toast";
 import FollowButton from "@/components/FollowButton";
 import PostCard, { type Post as PostCardPost, type User as PostCardUser } from "@/components/PostCard";
+import TrendingClaimCard, { type TrendingClaim } from "@/components/TrendingClaimCard";
 import { useStartConversation } from "@/hooks/useStartConversation";
 
 type SearchUser = {
@@ -42,6 +43,8 @@ function SearchPageInner() {
   const [currentUser, setCurrentUser] = useState<PostCardUser | null>(null);
   const [followState, setFollowState] = useState<Record<string, boolean>>({});
   const [messageBusy, setMessageBusy] = useState<Record<string, boolean>>({});
+  const [trendingClaims, setTrendingClaims] = useState<TrendingClaim[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(false);
   // Guards the follow-state batch fetch against an older response (from a
   // prior search) overwriting a newer one if the user searches again quickly.
   const followStateSeqRef = useRef(0);
@@ -142,6 +145,33 @@ function SearchPageInner() {
     };
   }, [searchParams]);
 
+  useEffect(() => {
+    if (hasQuery) {
+      return;
+    }
+
+    let cancelled = false;
+    setTrendingLoading(true);
+
+    axios
+      .get("/api/claims/trending")
+      .then((res) => {
+        if (cancelled) return;
+        setTrendingClaims(res.data.claims || []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTrendingClaims([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTrendingLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasQuery]);
+
   const submitSearch = () => {
     if (loading) return;
     router.push(`/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}`);
@@ -197,10 +227,39 @@ function SearchPageInner() {
       {message && <Toast message={message} type="error" />}
 
       {!hasQuery ? (
-        <div className="vv-card p-8 text-center">
-          <h3 className="vv-section-title mb-2">Search VeriVerse</h3>
-          <p className="text-sm text-slate-600">Find people, claims, posts, and topics.</p>
-        </div>
+        <>
+          <div className="vv-card p-8 text-center mb-6">
+            <h3 className="vv-section-title mb-2">Search VeriVerse</h3>
+            <p className="text-sm text-slate-600">Find people, claims, posts, and topics.</p>
+          </div>
+
+          <div className="vv-card p-4 sm:p-5">
+            <h3 className="vv-section-title mb-4">Trending claims</h3>
+            {trendingLoading ? (
+              <p className="text-sm text-slate-500">Loading trending claims…</p>
+            ) : trendingClaims.length === 0 ? (
+              <p className="text-sm text-slate-600">No claims are trending right now.</p>
+            ) : (
+              <div className="space-y-3">
+                {trendingClaims.map((claim) => (
+                  <TrendingClaimCard
+                    key={claim.id}
+                    claim={claim}
+                    isLoggedIn={Boolean(currentUserId)}
+                    onFollowChange={(claimId, following) =>
+                      setTrendingClaims((prev) =>
+                        prev.map((item) =>
+                          item.id === claimId ? { ...item, follow: { isFollowing: following } } : item
+                        )
+                      )
+                    }
+                    onFollowError={setMessage}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       ) : (
         <>
           {showTopics && hashtags.length > 0 && (
