@@ -19,6 +19,7 @@ type Notification = {
   createdAt: string;
   referencePost?: string | null;
   referenceConversation?: string | null;
+  referenceClaim?: string | null;
 };
 
 export default function NotificationsPage() {
@@ -144,6 +145,16 @@ export default function NotificationsPage() {
                     className="vv-btn-secondary shrink-0"
                   >
                     Open Conversation
+                  </button>
+                ) : null}
+
+                {item.referenceClaim ? (
+                  <button
+                    onClick={() => router.push(`/claims/${item.referenceClaim}`)}
+                    aria-label={`Open the claim referenced by: ${item.message}`}
+                    className="vv-btn-secondary shrink-0"
+                  >
+                    Open Claim
                   </button>
                 ) : null}
               </div>

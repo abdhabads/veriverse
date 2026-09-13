@@ -65,6 +65,9 @@ import { assessEvidenceStrength, EvidenceAssessment, EvidenceItemLike } from "@/
 import { buildAndPersistTrustAssessment } from "@/lib/trustAssessment";
 import { isShadowModeEnabled, runShadowAssessment } from "@/lib/shadowMode";
 import { ensureClaimComponents, assignEvidenceToComponent } from "@/lib/claimComponents";
+import TrustAssessment from "@/models/TrustAssessment";
+import { classifyClaimChange, recordClaimChangeAndNotify } from "@/lib/claimChangeNotification";
+import type { TrustAssessmentBand } from "@/lib/claimPresentation";
 import {
   findOrCreateClaim,
   getExistingEvidenceForClaim,
@@ -428,6 +431,67 @@ export async function evaluateContentTruthPipeline(
               claimId,
               error: error instanceof Error ? error.message : String(error),
             });
+          });
+        }
+
+        // P3.4: observe the already-produced authoritative assessment to
+        // determine whether a user-meaningful Claim change occurred, and if
+        // so, record it + notify ClaimFollow subscribers. Best-effort, same
+        // structural placement/isolation as Shadow Mode above - this must
+        // never affect the pipeline's own result. It computes no trust and
+        // never touches evidence scoring/version-advance semantics, both of
+        // which have already happened by this point.
+        try {
+          let previousBand: TrustAssessmentBand | null = null;
+          let previousCounts: { supportingCount: number; contradictingCount: number } | null = null;
+
+          if (!claimWasNewlyCreated && newlyCreatedThisRun.length > 0) {
+            // Exact version comparison only - never latest-by-date, never a
+            // guessed prior assessment. A missing row here (previousAssessment
+            // stays null) fails safe: classifyClaimChange treats an unknown
+            // previous band as "nothing to compare," not a guess.
+            const previousAssessment = await TrustAssessment.findOne({
+              claim: claimId,
+              claimAssessmentVersion: trustAssessment.claimAssessmentVersion - 1,
+            }).select("assessmentBand supportingEvidenceIds contradictingEvidenceIds");
+
+            if (previousAssessment) {
+              previousBand = previousAssessment.assessmentBand as TrustAssessmentBand;
+              previousCounts = {
+                supportingCount: (previousAssessment.supportingEvidenceIds || []).length,
+                contradictingCount: (previousAssessment.contradictingEvidenceIds || []).length,
+              };
+            }
+          }
+
+          const changeType = classifyClaimChange({
+            isInitialAssessment: claimWasNewlyCreated,
+            previousBand,
+            currentBand: trustAssessment.assessmentBand as TrustAssessmentBand,
+            previousCounts,
+            currentCounts: {
+              supportingCount: (trustAssessment.supportingEvidenceIds || []).length,
+              contradictingCount: (trustAssessment.contradictingEvidenceIds || []).length,
+            },
+          });
+
+          if (changeType) {
+            await recordClaimChangeAndNotify({
+              claimId,
+              fromAssessmentVersion: claimWasNewlyCreated ? null : trustAssessment.claimAssessmentVersion - 1,
+              toAssessmentVersion: trustAssessment.claimAssessmentVersion,
+              changeType,
+              fromAssessmentBand: previousBand,
+              toAssessmentBand: trustAssessment.assessmentBand as TrustAssessmentBand,
+            });
+          }
+        } catch (error) {
+          // Same isolation guarantee as every other side-observer in this
+          // block: a failure here must never affect Claim assessment,
+          // post creation, or post edit.
+          logEvent("CLAIM_CHANGE_DETECTION_FAILED", {
+            claimId,
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       }
