@@ -11,7 +11,7 @@ import ClaimVerdictBadge from "@/components/ClaimVerdictBadge";
 import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
 import PostCard, { type Post } from "@/components/PostCard";
 import ClaimFollowButton from "@/components/ClaimFollowButton";
-import { toGroundingSource, type ClaimVerdictPresentation } from "@/lib/claimPresentation";
+import { toGroundingSource, type ClaimVerdictPresentation, type ClaimExplanation } from "@/lib/claimPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
 
 type PublicEvidenceItem = {
@@ -62,6 +62,7 @@ type ClaimApiResponse = {
   claim: ClaimSummary;
   assessmentStatus: "available" | "assessment_not_available";
   currentAssessment: CurrentAssessment | null;
+  explanation: ClaimExplanation | null;
   evidence: { supporting: PublicEvidenceItem[]; contradicting: PublicEvidenceItem[]; context: PublicEvidenceItem[] };
   history: HistoryItem[];
   relatedPosts: Post[];
@@ -244,6 +245,24 @@ export default function ClaimPageClient({ id }: { id: string }) {
               />
             )}
           </div>
+
+          {/* Why this assessment - P4.1, subordinate to Current Assessment
+              and kept compact: this is Layer 2 explanation (the "why" behind
+              the verdict already shown above), never a substitute for
+              inspecting the actual evidence below. */}
+          {data.explanation && (
+            <div className="vv-card p-5 mb-6" data-testid="claim-explanation">
+              <h3 className="vv-section-title mb-3">Why this assessment</h3>
+              <p className="mb-3 text-sm leading-6 text-veriverse-dark/80">{data.explanation.summary}</p>
+              {data.explanation.reasons.length > 0 && (
+                <ul className="list-disc space-y-1.5 pl-5 text-xs text-slate-600">
+                  {data.explanation.reasons.map((reason, index) => (
+                    <li key={`${reason.type}-${index}`}>{reason.text}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           {/* Evidence (collapsible) */}
           <div className="vv-card p-5 mb-6">

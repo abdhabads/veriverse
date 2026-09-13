@@ -13,6 +13,7 @@ import { getAuthoritativeClaimAssessment } from "@/lib/claimAssessmentLookup";
 import {
   getClaimAssessmentPresentation,
   getClaimSummarySentence,
+  getClaimExplanation,
   boundEvidenceBuckets,
 } from "@/lib/claimPresentation";
 
@@ -73,6 +74,7 @@ export async function GET(req: Request, context: RouteContext) {
       contradicting: [],
       context: [],
     };
+    let explanationPayload: ReturnType<typeof getClaimExplanation> | null = null;
 
     if (currentAssessment) {
       // Current evidence comes exclusively from the IDs this specific
@@ -134,6 +136,18 @@ export async function GET(req: Request, context: RouteContext) {
           contextCount,
         }),
       };
+
+      // P4.1: "Why this assessment" - built only from the same authoritative
+      // TrustAssessment row's already-typed numeric/enum fields (never its
+      // internal reasons arrays - see lib/claimPresentation.ts's header on
+      // getClaimExplanation). No new query, no recalculation, no AI call.
+      explanationPayload = getClaimExplanation({
+        assessmentBand: currentAssessment.assessmentBand,
+        independentSupportingCount: currentAssessment.evidenceStrength?.independentSupportingCount || 0,
+        directContradictionCount: currentAssessment.contradictionStrength?.directCount || 0,
+        weakContradictionCount: currentAssessment.contradictionStrength?.weakCount || 0,
+        confidenceLevel: currentAssessment.verificationConfidence?.level || "low",
+      });
     }
 
     // History: strictly prior assessments, queried directly by version
@@ -236,6 +250,7 @@ export async function GET(req: Request, context: RouteContext) {
         },
         assessmentStatus: currentAssessmentPayload ? "available" : "assessment_not_available",
         currentAssessment: currentAssessmentPayload,
+        explanation: explanationPayload,
         evidence: evidencePayload,
         history,
         relatedPosts,

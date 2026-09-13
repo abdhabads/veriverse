@@ -95,6 +95,102 @@ export function getClaimSummarySentence(
   }
 }
 
+// --- Assessment explanation ("Why this assessment") ---
+//
+// P4.1: deliberately does NOT read TrustAssessment.assessmentReasons,
+// evidenceStrength.reasons, contradictionStrength.reasons, or
+// verificationConfidence.reasons at all - those arrays mix genuinely safe
+// statements with internal jargon ("grounding status"), raw heuristic scores
+// ("average strength 0.42"), and conceptually redundant restatements of the
+// same underlying fact across producers (see the P4.0 audit). Instead this
+// builds a fresh explanation from only the small set of already-typed,
+// already-stored numeric/enum fields every TrustAssessment carries -
+// assessmentBand, independentSupportingCount, directCount, weakCount, and
+// confidenceLevel - so every sentence here is traceable to one specific
+// stored field, and deduplication/no-raw-scores are structural guarantees
+// of the construction rather than filtering rules applied after the fact.
+export type ClaimExplanationReasonType = "support" | "contradiction" | "evidence" | "uncertainty";
+
+export type ClaimExplanationReason = {
+  type: ClaimExplanationReasonType;
+  text: string;
+};
+
+export type ClaimExplanation = {
+  summary: string;
+  reasons: ClaimExplanationReason[];
+};
+
+export type ClaimExplanationInput = {
+  assessmentBand: string;
+  independentSupportingCount: number;
+  directContradictionCount: number;
+  weakContradictionCount: number;
+  confidenceLevel: string;
+};
+
+const ASSESSMENT_BAND_EXPLANATION_SUMMARY: Record<TrustAssessmentBand, string> = {
+  well_supported:
+    "The available evidence is strong and comes from independently corroborated sources, with no substantial contradiction found.",
+  weakly_supported:
+    "Some evidence supports this claim, but it is not yet strong or independently corroborated.",
+  contested: "Both substantial supporting and substantial contradicting evidence exist for this claim.",
+  contradicted:
+    "The available evidence substantially contradicts this claim, with no substantial supporting evidence found.",
+  insufficient_evidence:
+    "There is not enough evidence to reach a confident assessment. This does not mean the claim is false - it means insufficient evidence has been found so far.",
+};
+
+// Ordering is fixed and deliberate: support/sufficiency first, then
+// meaningful contradiction/disagreement, then uncertainty/limitations last -
+// never the raw insertion order of any internal array.
+export function getClaimExplanation(input: ClaimExplanationInput): ClaimExplanation {
+  const band = input.assessmentBand as TrustAssessmentBand;
+  const summary = ASSESSMENT_BAND_EXPLANATION_SUMMARY[band] ?? ASSESSMENT_BAND_EXPLANATION_SUMMARY.insufficient_evidence;
+
+  const reasons: ClaimExplanationReason[] = [];
+
+  if (input.independentSupportingCount >= 2) {
+    reasons.push({
+      type: "support",
+      text: `Supported by ${input.independentSupportingCount} independent sources.`,
+    });
+  } else if (input.independentSupportingCount === 1) {
+    reasons.push({
+      type: "support",
+      text: "Supported by one source, which has not yet been independently corroborated.",
+    });
+  } else {
+    reasons.push({ type: "evidence", text: "No supporting evidence has been found." });
+  }
+
+  if (input.directContradictionCount >= 1) {
+    reasons.push({
+      type: "contradiction",
+      text: `${input.directContradictionCount} independent source${
+        input.directContradictionCount === 1 ? "" : "s"
+      } directly contradict${input.directContradictionCount === 1 ? "s" : ""} this claim.`,
+    });
+  } else if (input.weakContradictionCount >= 1) {
+    reasons.push({
+      type: "contradiction",
+      text: "Some evidence suggests possible disagreement, though not strong enough to count as a direct contradiction.",
+    });
+  }
+
+  if (
+    band !== "insufficient_evidence" &&
+    (input.confidenceLevel === "low" || input.confidenceLevel === "very_low")
+  ) {
+    reasons.push({
+      type: "uncertainty",
+      text: "Confidence in this assessment is limited based on the evidence gathered so far.",
+    });
+  }
+
+  return { summary, reasons };
+}
+
 // --- Evidence adapter ---
 //
 // Maps public-safe EvidenceObject fields onto GroundedEvidencePanel's
