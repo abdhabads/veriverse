@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Scopes Node's ES-module resolution to this folder only, so Node's built-in test runner and the extension's own .js files don't need to touch or affect the root Next.js app's package.json."
+}
