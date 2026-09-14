@@ -373,3 +373,174 @@ export function boundEvidenceBuckets<T>(
 
   return result;
 }
+
+// --- P4.3: uncertainty presentation ---
+//
+// Answers a different question than P4.1's getClaimExplanation: that
+// function explains WHY the assessment came out the way it did (backward-
+// looking); this answers WHAT A READER SHOULD BE CAUTIOUS ABOUT when
+// interpreting it (forward-looking). Deliberately built from a different,
+// narrower slice of the same typed inputs so the two never produce
+// duplicate sentences - see getClaimUncertainty's own comments for how each
+// reason is kept distinct from its P4.1 counterpart.
+//
+// Like getClaimExplanation, this never reads assessmentReasons,
+// evidenceStrength.reasons, contradictionStrength.reasons, or
+// verificationConfidence.reasons - only assessmentBand, confidenceLevel, and
+// the three bounded evidence-bucket counts already computed for the API
+// response.
+export type ClaimUncertaintyReasonType =
+  | "confidence"
+  | "limited_evidence"
+  | "disagreement"
+  | "unresolved_evidence";
+
+export type ClaimUncertaintyReason = {
+  type: ClaimUncertaintyReasonType;
+  text: string;
+};
+
+export type ClaimUncertainty = {
+  // A ready-to-render qualitative label - deliberately phrased as advice
+  // ("Significant caution advised") rather than reusing the Current
+  // Assessment card's own "Low confidence" badge wording verbatim, so the
+  // two don't read as the same sentence repeated in two places.
+  level: string;
+  reasons: ClaimUncertaintyReason[];
+};
+
+export type ClaimUncertaintyInput = {
+  assessmentBand: string;
+  confidenceLevel: string;
+  supportingCount: number;
+  contradictingCount: number;
+  contextCount: number;
+};
+
+const UNCERTAINTY_CAUTION_LABEL: Record<string, string> = {
+  high: "Limited caution needed",
+  moderate: "Some caution advised",
+  low: "Significant caution advised",
+  very_low: "Substantial caution advised",
+};
+
+export function getClaimUncertainty(input: ClaimUncertaintyInput): ClaimUncertainty {
+  const reasons: ClaimUncertaintyReason[] = [];
+
+  // Mutually exclusive with the generic confidence caution below, mirroring
+  // getClaimExplanation's own insufficient_evidence restraint: an
+  // insufficient-evidence claim already has this said explicitly and doesn't
+  // need a second, redundant "confidence is limited" bullet on top of it.
+  // Text is deliberately forward-looking ("may change") rather than
+  // P4.1's own explanatory framing of the same band.
+  if (input.assessmentBand === "insufficient_evidence") {
+    reasons.push({
+      type: "limited_evidence",
+      text: "Very little evidence has been gathered for this claim so far - this assessment may change as more evidence is found.",
+    });
+  } else if (input.confidenceLevel === "low" || input.confidenceLevel === "very_low") {
+    reasons.push({
+      type: "confidence",
+      text: "The evidence gathered so far is limited - treat this assessment as provisional rather than final.",
+    });
+  }
+
+  // Presence of both buckets is a directly observed count, not a
+  // reconstruction of the engine's "contested" band logic (which also
+  // weighs evidence STRENGTH, not just bucket counts) - safe to state
+  // regardless of which exact band the claim landed in.
+  if (input.supportingCount > 0 && input.contradictingCount > 0) {
+    reasons.push({
+      type: "disagreement",
+      text: "Evidence exists on both sides of this claim - consider reviewing the supporting and contradicting sources yourself before drawing a conclusion.",
+    });
+  }
+
+  if (input.contextCount > 0) {
+    reasons.push({
+      type: "unresolved_evidence",
+      text: `${input.contextCount} additional source${input.contextCount === 1 ? "" : "s"} ${
+        input.contextCount === 1 ? "is" : "are"
+      } available that didn't clearly support or contradict this claim - worth a look for extra context.`,
+    });
+  }
+
+  const level = UNCERTAINTY_CAUTION_LABEL[input.confidenceLevel] ?? UNCERTAINTY_CAUTION_LABEL.low;
+
+  return { level, reasons };
+}
+
+// Distinguishes, within the "context" evidence bucket, evidence that was
+// genuinely contextual/unclassified from evidence that WAS stance-classified
+// as "contradicts" but got excluded from the authoritative contradiction
+// count (wrong proposition/time/jurisdiction - see
+// lib/contradictionStrength.ts's classifyContradictionTier). Both
+// populations already share the same public "context" bucket
+// (TrustAssessment.unresolvedEvidenceIds mixes them - see that field's own
+// model comment) and each item's own already-public `stance` field is
+// sufficient to tell them apart with zero engine or API changes.
+export function getUnresolvedEvidenceCaution(stance: string): string | null {
+  if (stance === "contradicts") {
+    return "Flagged as a possible contradiction, but not strong enough to count as a direct contradiction for this assessment.";
+  }
+  return null;
+}
+
+// --- P4.3: temporal applicability (Claim-level) ---
+//
+// Distinct from P4.2's evidence publishedAt: that's when a SOURCE was
+// published; this is what time period the CLAIM's own proposition is about
+// (Claim.temporalScope, set once at claim-identity time from the claim text
+// itself - see lib/claimNormalization.ts's extractTemporalScope). Never
+// infers a date from post creation or evidence publication - a claim with
+// no explicit temporal language in its own text stays "unspecified" and
+// renders nothing here, rather than guessing "now".
+//
+// Deliberately makes no supersession/freshness claim ("this replaces the
+// previous assessment", "this is the latest truth") - temporal supersession
+// remains non-authoritative Shadow Mode per the P4.0 audit, untouched here.
+export type ClaimTemporalScopeInput = {
+  type?: string | null;
+  value?: string | null;
+};
+
+const TEMPORAL_MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+export function getClaimTemporalApplicability(scope?: ClaimTemporalScopeInput | null): string | null {
+  if (!scope || !scope.type) return null;
+
+  if (scope.type === "specific" && scope.value) {
+    const monthYearMatch = /^(\d{4})-(\d{2})$/.exec(scope.value);
+    if (monthYearMatch) {
+      const monthIndex = Number(monthYearMatch[2]) - 1;
+      const monthName = TEMPORAL_MONTH_NAMES[monthIndex];
+      // An out-of-range month (00 or 13+) is malformed stored data - omit
+      // rather than render a broken sentence like "This assessment applies
+      // to undefined 2025."
+      if (!monthName) return null;
+      return `This assessment applies to ${monthName} ${monthYearMatch[1]}.`;
+    }
+
+    const yearMatch = /^\d{4}$/.exec(scope.value);
+    if (yearMatch) {
+      return `This assessment applies to ${scope.value}.`;
+    }
+
+    // A "specific" scope with a value in neither format shouldn't occur
+    // today (extractTemporalScope only ever produces YYYY-MM or YYYY), but
+    // if stored data ever drifts, omit rather than fabricate a reading of it.
+    return null;
+  }
+
+  if (scope.type === "relative" && scope.value === "current") {
+    // Deliberately does NOT say the assessment itself is current/up to date
+    // (that would be the freshness/supersession claim P4.0 ruled out) - only
+    // describes what the claim's own text is about.
+    return "This claim concerns an ongoing or current situation rather than a specific past date.";
+  }
+
+  return null;
+}

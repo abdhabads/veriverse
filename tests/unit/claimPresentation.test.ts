@@ -8,6 +8,10 @@ import {
   getIndependenceNotes,
   toGroundingSource,
   boundEvidenceBuckets,
+  getClaimUncertainty,
+  getUnresolvedEvidenceCaution,
+  getClaimTemporalApplicability,
+  type ClaimUncertaintyInput,
 } from "@/lib/claimPresentation";
 
 describe("getClaimAssessmentPresentation", () => {
@@ -248,5 +252,190 @@ describe("boundEvidenceBuckets", () => {
     expect(total).toBe(3);
     expect(result.contradicting).toEqual([11]);
     expect(result.context).toEqual([12]);
+  });
+});
+
+function uncertaintyInput(overrides: Partial<ClaimUncertaintyInput> = {}): ClaimUncertaintyInput {
+  return {
+    assessmentBand: "weakly_supported",
+    confidenceLevel: "moderate",
+    supportingCount: 1,
+    contradictingCount: 0,
+    contextCount: 0,
+    ...overrides,
+  };
+}
+
+describe("getClaimUncertainty - determinism", () => {
+  it("produces identical output for identical input", () => {
+    const params = uncertaintyInput({ assessmentBand: "contested", supportingCount: 2, contradictingCount: 1 });
+    expect(getClaimUncertainty(params)).toEqual(getClaimUncertainty(params));
+  });
+});
+
+describe("getClaimUncertainty - insufficient-evidence restraint", () => {
+  it("uses a distinct 'may change' forward-looking reason for insufficient_evidence, not a generic confidence bullet", () => {
+    const result = getClaimUncertainty(
+      uncertaintyInput({ assessmentBand: "insufficient_evidence", confidenceLevel: "very_low" })
+    );
+    const limited = result.reasons.filter((r) => r.type === "limited_evidence");
+    const confidence = result.reasons.filter((r) => r.type === "confidence");
+    expect(limited.length).toBe(1);
+    expect(confidence.length).toBe(0);
+    expect(limited[0].text).toContain("may change");
+  });
+
+  it("never implies the claim is false or true", () => {
+    const result = getClaimUncertainty(uncertaintyInput({ assessmentBand: "insufficient_evidence" }));
+    const allText = [result.level, ...result.reasons.map((r) => r.text)].join(" ").toLowerCase();
+    expect(allText).not.toContain("false");
+    expect(allText).not.toContain("true");
+  });
+});
+
+describe("getClaimUncertainty - low-confidence handling", () => {
+  it("adds a distinct provisional-caution reason for low/very_low confidence outside insufficient_evidence", () => {
+    const low = getClaimUncertainty(uncertaintyInput({ assessmentBand: "weakly_supported", confidenceLevel: "low" }));
+    expect(low.reasons.some((r) => r.type === "confidence")).toBe(true);
+  });
+
+  it("never emits a confidence caution for high/moderate confidence", () => {
+    const high = getClaimUncertainty(uncertaintyInput({ assessmentBand: "well_supported", confidenceLevel: "high" }));
+    expect(high.reasons.some((r) => r.type === "confidence")).toBe(false);
+  });
+
+  it("is worded distinctly from P4.1's own explanation bullet for the same signal", () => {
+    const result = getClaimUncertainty(uncertaintyInput({ confidenceLevel: "low" }));
+    const confidenceReason = result.reasons.find((r) => r.type === "confidence");
+    expect(confidenceReason?.text).not.toBe("Confidence in this assessment is limited based on the evidence gathered so far.");
+  });
+});
+
+describe("getClaimUncertainty - contested disagreement", () => {
+  it("flags disagreement whenever both buckets are non-empty, independent of the exact assessment band", () => {
+    const result = getClaimUncertainty(
+      uncertaintyInput({ assessmentBand: "contested", supportingCount: 2, contradictingCount: 1 })
+    );
+    const disagreement = result.reasons.find((r) => r.type === "disagreement");
+    expect(disagreement).toBeDefined();
+    expect(disagreement!.text.toLowerCase()).not.toContain("true");
+    expect(disagreement!.text.toLowerCase()).not.toContain("false");
+  });
+
+  it("never flags disagreement when only one side has evidence", () => {
+    const result = getClaimUncertainty(uncertaintyInput({ supportingCount: 3, contradictingCount: 0 }));
+    expect(result.reasons.some((r) => r.type === "disagreement")).toBe(false);
+  });
+});
+
+describe("getClaimUncertainty - unresolved/context evidence", () => {
+  it("flags unresolved evidence with the correct singular/plural wording", () => {
+    const singular = getClaimUncertainty(uncertaintyInput({ contextCount: 1 }));
+    const plural = getClaimUncertainty(uncertaintyInput({ contextCount: 3 }));
+    expect(singular.reasons.find((r) => r.type === "unresolved_evidence")!.text).toContain("1 additional source is");
+    expect(plural.reasons.find((r) => r.type === "unresolved_evidence")!.text).toContain("3 additional sources are");
+  });
+
+  it("omits the unresolved-evidence reason when there is none", () => {
+    const result = getClaimUncertainty(uncertaintyInput({ contextCount: 0 }));
+    expect(result.reasons.some((r) => r.type === "unresolved_evidence")).toBe(false);
+  });
+});
+
+describe("getClaimUncertainty - safety: no raw scores, probabilities, or internal jargon", () => {
+  const allBands = ["well_supported", "weakly_supported", "contested", "contradicted", "insufficient_evidence"];
+  const allConfidence = ["high", "moderate", "low", "very_low"];
+
+  it("never emits a decimal score, percentage, or internal jargon across the input space", () => {
+    for (const assessmentBand of allBands) {
+      for (const confidenceLevel of allConfidence) {
+        for (const supportingCount of [0, 1, 3]) {
+          for (const contradictingCount of [0, 1, 2]) {
+            for (const contextCount of [0, 1, 4]) {
+              const result = getClaimUncertainty({
+                assessmentBand,
+                confidenceLevel,
+                supportingCount,
+                contradictingCount,
+                contextCount,
+              });
+              const allText = [result.level, ...result.reasons.map((r) => r.text)].join(" ");
+              expect(allText).not.toMatch(/0\.\d\d/);
+              expect(allText).not.toMatch(/%/);
+              expect(allText.toLowerCase()).not.toContain("probability");
+              expect(allText.toLowerCase()).not.toContain("threshold");
+              expect(allText.toLowerCase()).not.toContain("grounding status");
+              expect(allText.toLowerCase()).not.toContain("independencegroup");
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it("falls back to a safe caution level for an unrecognized confidenceLevel, never throwing", () => {
+    const result = getClaimUncertainty(uncertaintyInput({ confidenceLevel: "some_future_level" }));
+    expect(typeof result.level).toBe("string");
+    expect(result.level.length).toBeGreaterThan(0);
+  });
+});
+
+describe("getUnresolvedEvidenceCaution", () => {
+  it("labels a disqualified contradiction distinctly from genuinely contextual evidence", () => {
+    expect(getUnresolvedEvidenceCaution("contradicts")).toContain("possible contradiction");
+    expect(getUnresolvedEvidenceCaution("context")).toBeNull();
+    expect(getUnresolvedEvidenceCaution("unknown")).toBeNull();
+  });
+
+  it("never claims this is a direct/confirmed contradiction", () => {
+    const text = getUnresolvedEvidenceCaution("contradicts")!.toLowerCase();
+    expect(text).toContain("not strong enough");
+  });
+});
+
+describe("getClaimTemporalApplicability", () => {
+  it("formats a specific month-year scope as a readable month name and year", () => {
+    expect(getClaimTemporalApplicability({ type: "specific", value: "2026-09" })).toBe(
+      "This assessment applies to September 2026."
+    );
+  });
+
+  it("formats a specific year-only scope", () => {
+    expect(getClaimTemporalApplicability({ type: "specific", value: "2025" })).toBe(
+      "This assessment applies to 2025."
+    );
+  });
+
+  it("describes a relative/current scope without claiming the assessment itself is up to date", () => {
+    const text = getClaimTemporalApplicability({ type: "relative", value: "current" });
+    expect(text).toBe("This claim concerns an ongoing or current situation rather than a specific past date.");
+    expect(text?.toLowerCase()).not.toContain("latest");
+    expect(text?.toLowerCase()).not.toContain("up to date");
+    expect(text?.toLowerCase()).not.toContain("supersede");
+  });
+
+  it("omits temporal copy entirely for an unspecified/timeless scope", () => {
+    expect(getClaimTemporalApplicability({ type: "unspecified", value: null })).toBeNull();
+  });
+
+  it("omits temporal copy for a missing/absent scope rather than guessing", () => {
+    expect(getClaimTemporalApplicability(null)).toBeNull();
+    expect(getClaimTemporalApplicability(undefined)).toBeNull();
+  });
+
+  it("omits rather than fabricates for a malformed specific value", () => {
+    expect(getClaimTemporalApplicability({ type: "specific", value: "not-a-date" })).toBeNull();
+    expect(getClaimTemporalApplicability({ type: "specific", value: "2025-13" })).toBeNull();
+  });
+
+  it("never claims temporal supersession over a previous assessment", () => {
+    const allOutputs = [
+      getClaimTemporalApplicability({ type: "specific", value: "2026-09" }),
+      getClaimTemporalApplicability({ type: "specific", value: "2025" }),
+      getClaimTemporalApplicability({ type: "relative", value: "current" }),
+    ].join(" ").toLowerCase();
+    expect(allOutputs).not.toContain("replaces the previous");
+    expect(allOutputs).not.toContain("supersede");
+    expect(allOutputs).not.toContain("latest truth");
   });
 });

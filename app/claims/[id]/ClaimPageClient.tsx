@@ -14,8 +14,11 @@ import ClaimFollowButton from "@/components/ClaimFollowButton";
 import {
   toGroundingSource,
   getIndependenceNotes,
+  getClaimTemporalApplicability,
+  getUnresolvedEvidenceCaution,
   type ClaimVerdictPresentation,
   type ClaimExplanation,
+  type ClaimUncertainty,
 } from "@/lib/claimPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
 
@@ -68,6 +71,7 @@ type ClaimApiResponse = {
   assessmentStatus: "available" | "assessment_not_available";
   currentAssessment: CurrentAssessment | null;
   explanation: ClaimExplanation | null;
+  uncertainty: ClaimUncertainty | null;
   evidence: { supporting: PublicEvidenceItem[]; contradicting: PublicEvidenceItem[]; context: PublicEvidenceItem[] };
   history: HistoryItem[];
   relatedPosts: Post[];
@@ -216,9 +220,6 @@ export default function ClaimPageClient({ id }: { id: string }) {
               {claim.jurisdiction && (
                 <span className="vv-verdict-pill vv-verdict-neutral">{claim.jurisdiction}</span>
               )}
-              {claim.temporalScope && claim.temporalScope.type !== "unspecified" && claim.temporalScope.value && (
-                <span className="vv-verdict-pill vv-verdict-neutral">{claim.temporalScope.value}</span>
-              )}
             </div>
             <p className="mt-3 text-xs text-slate-500">
               First seen {new Date(claim.firstSeenAt).toLocaleDateString()}
@@ -317,37 +318,86 @@ export default function ClaimPageClient({ id }: { id: string }) {
             )}
           </div>
 
-          {/* Context / uncertainty */}
-          {data.evidence.context.length > 0 && (
-            <div className="vv-card p-5 mb-6">
-              <h3 className="vv-section-title mb-3">Context &amp; Uncertainty</h3>
-              <p className="mb-3 text-xs text-veriverse-dark/60">
-                These sources relate to the claim but don&rsquo;t clearly support or contradict it.
-              </p>
-              <div className="space-y-3">
-                {data.evidence.context.map((item, index) => (
-                  <div
-                    key={`${item.sourceUrl}-${index}`}
-                    className="rounded-2xl border border-veriverse-border bg-white/70 px-3 py-3 text-sm"
+          {/* Context & Uncertainty - P4.3, subordinate to Current Assessment
+              and Why this assessment: this answers "what should I be
+              cautious about when interpreting this?" (forward-looking),
+              never "why did the assessment come out this way?" (P4.1's job,
+              answered above). Temporal applicability lives here rather than
+              in the compact Claim-metadata pill row above, since it's itself
+              a form of interpretive caution ("this is about a specific past
+              period, not necessarily still true today"), not a neutral fact
+              like domain/jurisdiction. */}
+          {(() => {
+            const temporalApplicability = getClaimTemporalApplicability(claim.temporalScope);
+            const uncertaintyReasons = data.uncertainty?.reasons ?? [];
+            const hasContextEvidence = data.evidence.context.length > 0;
+            if (!temporalApplicability && uncertaintyReasons.length === 0 && !hasContextEvidence) {
+              return null;
+            }
+            return (
+              <div className="vv-card p-5 mb-6">
+                <h3 className="vv-section-title mb-3">Context &amp; Uncertainty</h3>
+
+                {temporalApplicability && (
+                  <p
+                    className="mb-3 text-sm leading-6 text-veriverse-dark/80"
+                    data-testid="claim-temporal-applicability"
                   >
-                    <a
-                      href={item.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="vv-link-accent block font-medium"
-                    >
-                      {item.publisher || item.domain || "Source"}
-                    </a>
-                    {item.evidenceText && (
-                      <p className="mt-1 text-xs leading-5 text-veriverse-dark/60 italic">
-                        &ldquo;{item.evidenceText}&rdquo;
-                      </p>
-                    )}
+                    {temporalApplicability}
+                  </p>
+                )}
+
+                {uncertaintyReasons.length > 0 && (
+                  <div className="mb-4" data-testid="claim-uncertainty">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-veriverse-dark/50">
+                      {data.uncertainty?.level}
+                    </p>
+                    <ul className="list-disc space-y-1.5 pl-5 text-xs text-slate-600">
+                      {uncertaintyReasons.map((reason, index) => (
+                        <li key={`${reason.type}-${index}`}>{reason.text}</li>
+                      ))}
+                    </ul>
                   </div>
-                ))}
+                )}
+
+                {hasContextEvidence && (
+                  <>
+                    <p className="mb-3 text-xs text-veriverse-dark/60">
+                      These sources relate to the claim but don&rsquo;t clearly support or contradict it.
+                    </p>
+                    <div className="space-y-3">
+                      {data.evidence.context.map((item, index) => {
+                        const caution = getUnresolvedEvidenceCaution(item.stance);
+                        return (
+                          <div
+                            key={`${item.sourceUrl}-${index}`}
+                            className="rounded-2xl border border-veriverse-border bg-white/70 px-3 py-3 text-sm"
+                          >
+                            <a
+                              href={item.sourceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="vv-link-accent block font-medium"
+                            >
+                              {item.publisher || item.domain || "Source"}
+                            </a>
+                            {caution && (
+                              <p className="mt-1 text-[11px] italic text-veriverse-dark/45">{caution}</p>
+                            )}
+                            {item.evidenceText && (
+                              <p className="mt-1 text-xs leading-5 text-veriverse-dark/60 italic">
+                                &ldquo;{item.evidenceText}&rdquo;
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Community context - deliberately separate from assessment/
               evidence above: this describes social activity around the

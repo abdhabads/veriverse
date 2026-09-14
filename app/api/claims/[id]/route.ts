@@ -14,6 +14,7 @@ import {
   getClaimAssessmentPresentation,
   getClaimSummarySentence,
   getClaimExplanation,
+  getClaimUncertainty,
   boundEvidenceBuckets,
 } from "@/lib/claimPresentation";
 
@@ -75,6 +76,7 @@ export async function GET(req: Request, context: RouteContext) {
       context: [],
     };
     let explanationPayload: ReturnType<typeof getClaimExplanation> | null = null;
+    let uncertaintyPayload: ReturnType<typeof getClaimUncertainty> | null = null;
 
     if (currentAssessment) {
       // Current evidence comes exclusively from the IDs this specific
@@ -147,6 +149,23 @@ export async function GET(req: Request, context: RouteContext) {
         directContradictionCount: currentAssessment.contradictionStrength?.directCount || 0,
         weakContradictionCount: currentAssessment.contradictionStrength?.weakCount || 0,
         confidenceLevel: currentAssessment.verificationConfidence?.level || "low",
+      });
+
+      // P4.3: computed here (not client-side) because it needs the raw
+      // assessmentBand string, which the API response never otherwise
+      // exposes (only the mapped `verdict` presentation object is public) -
+      // reconstructing an "insufficient_evidence"-equivalent signal from
+      // evidence counts alone would be unsafe, since evidenceStrength.band
+      // can be "negligible" (and so still count as insufficient evidence)
+      // even with a nonzero supportingCount. Only the derived, already-safe
+      // {level, reasons} output crosses the API boundary - never the raw
+      // band or confidence score.
+      uncertaintyPayload = getClaimUncertainty({
+        assessmentBand: currentAssessment.assessmentBand,
+        confidenceLevel: currentAssessment.verificationConfidence?.level || "low",
+        supportingCount,
+        contradictingCount,
+        contextCount,
       });
     }
 
@@ -251,6 +270,7 @@ export async function GET(req: Request, context: RouteContext) {
         assessmentStatus: currentAssessmentPayload ? "available" : "assessment_not_available",
         currentAssessment: currentAssessmentPayload,
         explanation: explanationPayload,
+        uncertainty: uncertaintyPayload,
         evidence: evidencePayload,
         history,
         relatedPosts,
