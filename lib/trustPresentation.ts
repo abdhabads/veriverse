@@ -148,9 +148,26 @@ export function getTrustVerdict(input: TrustVerdictInput): TrustVerdict {
   // run and landed somewhere on the scale - even a low result (including
   // exactly 0) is evaluated evidence, not an absence of assessment, so it
   // must never share a label with the true not-yet-evaluated case.
+  //
+  // P4.5: this tier was previously labeled "Well Supported" - identical to
+  // lib/claimPresentation.ts's Claim-level "well_supported" band label,
+  // despite being produced by an entirely different mechanism (a raw
+  // verificationScore threshold here vs. a qualitative evidence-strength/
+  // contradiction-strength band there). The P4 completion audit found a
+  // user could move from a Claim showing that label directly to a related
+  // Post that could independently show it too, with no explanation that
+  // these are different judgments. "Strongly Supported" removes the exact
+  // collision while keeping the same score>=0.8 threshold and the same
+  // "supported"-family wording as the "Supported" tier just below it -
+  // deliberately not "Highly Verified" (would overclaim relative to a
+  // heuristic score, and risks a second collision with this file's own
+  // "Expert Verified"/"Unverified" labels) and not "Strong Evidence" (would
+  // blur this file's own deliberate verdict-vs-evidence-strength
+  // distinction - see getEvidenceStrength() below, whose own "Strong" pill
+  // already covers that separate question for this same tier).
   const score = verificationScore ?? null;
   if (score !== null && score >= 0.8) {
-    return { label: "Well Supported", icon: "check", tone: "positive", priority: 50 };
+    return { label: "Strongly Supported", icon: "check", tone: "positive", priority: 50 };
   }
   if (score !== null && score >= 0.6) {
     return { label: "Supported", icon: "check", tone: "positive", priority: 40 };

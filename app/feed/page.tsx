@@ -901,7 +901,7 @@ export default function FeedPage() {
                           could name something a card would never actually
                           display. */}
                       <optgroup label="Verdict">
-                        <option value="Well Supported">Well Supported</option>
+                        <option value="Strongly Supported">Strongly Supported</option>
                         <option value="Supported">Supported</option>
                         <option value="Weak Evidence">Weak Evidence</option>
                         <option value="Contradicted">Contradicted</option>

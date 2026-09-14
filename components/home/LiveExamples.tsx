@@ -97,7 +97,7 @@ export default function LiveExamples() {
             username="james_orion"
             time="2 hours ago"
             category="Science"
-            verdictLabel="✓ Well Supported"
+            verdictLabel="✓ Strongly Supported"
             verdictBg="#DEEEDF"
             verdictColor="#2C6B3C"
             verdictBorder="#BFE0C4"

@@ -102,7 +102,11 @@ test("evidence disclosure is collapsed by default and toggles aria-expanded", as
   // above the panel, not duplicated inside it.
   const evidencePanel = card.locator('[id^="evidence-panel-"]');
   await expect(evidencePanel.getByText(/^Supported$/)).toHaveCount(0);
-  await expect(evidencePanel.getByText(/^Well Supported$/)).toHaveCount(0);
+  // P4.5: verdict label renamed from "Well Supported" to "Strongly
+  // Supported" (disambiguated from the Claim vocabulary) - checking the
+  // current label here, not the retired one, keeps this assertion actually
+  // testing the no-duplicate-verdict-in-panel property it's meant to prove.
+  await expect(evidencePanel.getByText(/^Strongly Supported$/)).toHaveCount(0);
   await expect(evidencePanel.getByText(/^Strong Evidence$/)).toHaveCount(0);
   await expect(card).not.toContainText("Risk");
   await expect(card).not.toContainText("verification confidence");

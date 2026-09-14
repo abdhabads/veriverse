@@ -1,5 +1,5 @@
 const VERDICTS = [
-  { label: "Well Supported", icon: "✓", bg: "#DEEEDF", color: "#2C6B3C", border: "#BFE0C4", desc: "Retrieved sources broadly support this claim." },
+  { label: "Strongly Supported", icon: "✓", bg: "#DEEEDF", color: "#2C6B3C", border: "#BFE0C4", desc: "Retrieved sources broadly support this claim." },
   { label: "Contradicted", icon: "✕", bg: "#F8DEDB", color: "#B23B30", border: "#F0C2BD", desc: "Retrieved sources directly oppose this claim." },
   { label: "Under Expert Review", icon: "🔍", bg: "#F1E4C7", color: "#8A6D2F", border: "#E5D3A3", desc: "A sensitive claim, awaiting a qualified reviewer's judgment." },
   { label: "Evaluating", icon: "🕐", bg: "#E9E9E9", color: "#666666", border: "#D8D8D8", desc: "Just posted — the pipeline is still gathering sources." },

@@ -1,6 +1,7 @@
 // tests/unit/trustVerdict.test.ts
 import { describe, it, expect } from "vitest";
 import { getTrustVerdict } from "@/lib/trustPresentation";
+import { getClaimAssessmentPresentation } from "@/lib/claimPresentation";
 
 describe("getTrustVerdict", () => {
 
@@ -85,14 +86,14 @@ describe("getTrustVerdict", () => {
   });
 
   describe("evidence-based verdicts", () => {
-    it("returns Well Supported for score >= 0.8", () => {
+    it("returns Strongly Supported for score >= 0.8", () => {
       const v = getTrustVerdict({ status: "unverified", verificationScore: 0.8 });
-      expect(v.label).toBe("Well Supported");
+      expect(v.label).toBe("Strongly Supported");
     });
 
-    it("returns Well Supported for score = 1.0", () => {
+    it("returns Strongly Supported for score = 1.0", () => {
       const v = getTrustVerdict({ status: "unverified", verificationScore: 1.0 });
-      expect(v.label).toBe("Well Supported");
+      expect(v.label).toBe("Strongly Supported");
     });
 
     it("returns Supported for score >= 0.6 and < 0.8", () => {
@@ -151,7 +152,7 @@ describe("getTrustVerdict", () => {
         contentType: "rhetorical_claim",
         verificationScore: 0.85,
       });
-      expect(v.label).toBe("Well Supported");
+      expect(v.label).toBe("Strongly Supported");
     });
 
     it("flagged status still takes priority over a question's contentType", () => {
@@ -169,6 +170,22 @@ describe("getTrustVerdict", () => {
         contradictionCount: 1,
       });
       expect(v.label).toBe("Contradicted");
+    });
+  });
+
+  // P4.5: the Post-vocabulary top evidence-based tier and the Claim-vocabulary
+  // "well_supported" band previously shared the identical label "Well
+  // Supported" despite being produced by unrelated mechanisms (a raw
+  // verificationScore threshold here vs. a qualitative evidenceStrength/
+  // contradictionStrength band there) - see lib/trustPresentation.ts's own
+  // comment on this tier. This proves the collision stays fixed rather than
+  // silently reappearing if either vocabulary is edited independently in the
+  // future.
+  describe("Post/Claim vocabulary disambiguation (P4.5)", () => {
+    it("never shares its top evidence-based label with the Claim well_supported band label", () => {
+      const postVerdict = getTrustVerdict({ status: "unverified", verificationScore: 0.9 });
+      const claimVerdict = getClaimAssessmentPresentation("well_supported");
+      expect(postVerdict.label).not.toBe(claimVerdict.label);
     });
   });
 });

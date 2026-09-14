@@ -64,7 +64,7 @@ describe("getEvidenceStrength", () => {
 
   it("shows Strong for a pure-evidence verdict with score >= 0.8", () => {
     const verdict = getTrustVerdict({ status: "unverified", verificationScore: 0.85 });
-    expect(verdict.label).toBe("Well Supported");
+    expect(verdict.label).toBe("Strongly Supported");
 
     const strength = getEvidenceStrength(verdict, 0.85);
     expect(strength.visible).toBe(true);
