@@ -23,6 +23,7 @@ import {
   type AssessmentTransition,
 } from "@/lib/claimPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
+import { shareClaim } from "@/lib/shareLink";
 
 type PublicEvidenceItem = {
   sourceUrl: string;
@@ -180,6 +181,20 @@ export default function ClaimPageClient({ id }: { id: string }) {
 
   const [reportReasons, setReportReasons] = useState<Record<string, string>>({});
 
+  // P5.1: the external-verification journey should be able to end here,
+  // shareable, without depending on a Post existing (PostCard.tsx already
+  // has its own, separate handleShareClaim - this is the first direct
+  // entry point on the Claim page itself). Reuses the existing
+  // shareClaim/buildClaimShareUrl infrastructure verbatim - no new sharing
+  // logic.
+  async function handleShareClaim() {
+    if (!data) return;
+    setMessage("");
+    const result = await shareClaim({ claimId: id, claimText: data.claim.canonicalText });
+    if (result.status === "cancelled") return;
+    if (result.message) setMessage(result.message);
+  }
+
   if (notFound) {
     return (
       <PageWrapper title="Claim" subtitle="This claim could not be found.">
@@ -207,6 +222,11 @@ export default function ClaimPageClient({ id }: { id: string }) {
         <button onClick={() => router.push("/feed")} className="vv-btn-secondary">
           Back to Feed
         </button>
+        {data && (
+          <button onClick={handleShareClaim} className="vv-btn-secondary" data-testid="claim-share-button">
+            Share
+          </button>
+        )}
       </div>
 
       {message && <Toast message={message} type="info" />}

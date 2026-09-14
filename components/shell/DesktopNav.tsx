@@ -8,6 +8,7 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import { ShellIcon } from "@/components/Icons";
+import TrustIcon from "@/components/TrustIcons";
 import { buttonClassName } from "@/components/ui/Button";
 import NavItem from "./NavItem";
 import ProfileMenu from "./ProfileMenu";
@@ -43,6 +44,12 @@ export default function DesktopNav({ user, unreadMessages, unreadNotifications }
             label="Search"
             href="/search"
             icon={<ShellIcon name="search" />}
+            labelClassName={TABLET_HIDDEN_LABEL}
+          />
+          <NavItem
+            label="Verify"
+            href="/verify"
+            icon={<TrustIcon name="check" size={18} />}
             labelClassName={TABLET_HIDDEN_LABEL}
           />
           <NavItem

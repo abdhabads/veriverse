@@ -135,6 +135,37 @@ export async function findOrCreateClaim(claimText: string): Promise<FindOrCreate
   }
 }
 
+export type ResolveExistingClaimResult = {
+  claim: any;
+  matchTier: "exact" | "high_confidence";
+} | null;
+
+// P5.1: read-only counterpart to findOrCreateClaim, for callers (an
+// anonymous "does VeriVerse already know this claim?" lookup) that must
+// never mutate on a miss. Deliberately duplicates only the matching
+// decision, not the creation - same identity computation
+// (computeClaimIdentity), same identityKey lookup, and the exact same
+// exact/high_confidence tie-break (a case-insensitive canonicalText
+// compare) findOrCreateClaim's own duplicate-key branch already uses - see
+// tests/unit/claimIdentityResolution.test.ts for a same-input equivalence
+// proof against findOrCreateClaim. A "possible" (fuzzy/Jaccard) match is
+// deliberately never resolved here either, for the same reason
+// findOrCreateClaim never auto-merges on one: a coincidental correlation
+// is not authoritative identity, so it is never returned as if VeriVerse
+// "already knows" the claim.
+export async function resolveExistingClaim(claimText: string): Promise<ResolveExistingClaimResult> {
+  const identity = computeClaimIdentity(claimText);
+  const existing = await Claim.findOne({ identityKey: identity.identityKey });
+  if (!existing) return null;
+
+  const matchTier: "exact" | "high_confidence" =
+    existing.canonicalText.trim().toLowerCase() === identity.canonicalText.trim().toLowerCase()
+      ? "exact"
+      : "high_confidence";
+
+  return { claim: existing, matchTier };
+}
+
 export type EvidenceForClaim = {
   id: string;
   stance: "supports" | "contradicts" | "context" | "unknown";

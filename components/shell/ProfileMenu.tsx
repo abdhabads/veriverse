@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/apiClient";
 import { clearAuth } from "@/lib/clientAuth";
 import { ShellIcon } from "@/components/Icons";
+import TrustIcon from "@/components/TrustIcons";
 import NavItem from "./NavItem";
 import type { ShellUser } from "@/hooks/useCurrentUser";
 
@@ -139,15 +140,24 @@ export default function ProfileMenu({ user, unreadMessages, variant }: ProfileMe
           </p>
           <NavItem label="Profile" href="/profile" icon={<ShellIcon name="user" />} variant="menu" onClick={closeMenu} />
           {variant === "mobile" && (
-            <NavItem
-              label="Messages"
-              href="/messages"
-              matchPaths={["/messages"]}
-              icon={<ShellIcon name="mail" />}
-              unreadCount={unreadMessages}
-              variant="menu"
-              onClick={closeMenu}
-            />
+            <>
+              <NavItem
+                label="Messages"
+                href="/messages"
+                matchPaths={["/messages"]}
+                icon={<ShellIcon name="mail" />}
+                unreadCount={unreadMessages}
+                variant="menu"
+                onClick={closeMenu}
+              />
+              <NavItem
+                label="Verify"
+                href="/verify"
+                icon={<TrustIcon name="check" size={16} />}
+                variant="menu"
+                onClick={closeMenu}
+              />
+            </>
           )}
 
           <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
