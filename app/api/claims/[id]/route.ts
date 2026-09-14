@@ -15,6 +15,7 @@ import {
   getClaimSummarySentence,
   getClaimExplanation,
   getClaimUncertainty,
+  getAssessmentChangeNarrative,
   boundEvidenceBuckets,
 } from "@/lib/claimPresentation";
 
@@ -178,14 +179,63 @@ export async function GET(req: Request, context: RouteContext) {
     })
       .sort({ claimAssessmentVersion: -1 })
       .limit(MAX_HISTORY)
-      .select("createdAt assessmentBand verificationConfidence supportingEvidenceIds contradictingEvidenceIds");
+      .select(
+        "claimAssessmentVersion createdAt assessmentBand verificationConfidence " +
+          "supportingEvidenceIds contradictingEvidenceIds unresolvedEvidenceIds"
+      );
+
+    // P4.4: adjacent-version change narrative, derived entirely from
+    // authoritative TrustAssessment rows (never ClaimChangeEvent - see
+    // getAssessmentChangeNarrative's own header for why that model has
+    // systematic coverage gaps unsuitable as a history source). Snapshots
+    // must be ascending (oldest first) for the pure helper's adjacent-pair
+    // comparison, so the DESC-fetched historyRows are reversed here; the
+    // current assessment (if any) is appended as the final, most-recent
+    // snapshot. Only full ID arrays are used internally for real set-based
+    // add/remove detection - none of them cross the API boundary, only the
+    // derived {summary, changes} text does.
+    const snapshots = [...historyRows]
+      .reverse()
+      .map((row: any) => ({
+        version: row.claimAssessmentVersion,
+        assessmentBand: row.assessmentBand,
+        confidenceLevel: row.verificationConfidence?.level || "low",
+        supportingEvidenceIds: (row.supportingEvidenceIds || []).map(String),
+        contradictingEvidenceIds: (row.contradictingEvidenceIds || []).map(String),
+        contextEvidenceIds: (row.unresolvedEvidenceIds || []).map(String),
+      }));
+    if (currentAssessment) {
+      snapshots.push({
+        version: currentAssessment.claimAssessmentVersion,
+        assessmentBand: currentAssessment.assessmentBand,
+        confidenceLevel: currentAssessment.verificationConfidence?.level || "low",
+        supportingEvidenceIds: (currentAssessment.supportingEvidenceIds || []).map(String),
+        contradictingEvidenceIds: (currentAssessment.contradictingEvidenceIds || []).map(String),
+        contextEvidenceIds: (currentAssessment.unresolvedEvidenceIds || []).map(String),
+      });
+    }
+    const transitions = getAssessmentChangeNarrative(snapshots);
+    // Only MAX_HISTORY prior versions are ever fetched, so a claim with more
+    // history than that has no snapshot for the row just before the oldest
+    // one returned here - that row's own `change` stays null (same
+    // treatment as a claim's true first-ever assessment) rather than
+    // comparing against data we don't actually have.
+    const transitionByToVersion = new Map(transitions.map((t) => [t.toVersion, t]));
+
+    if (currentAssessmentPayload && currentAssessment) {
+      currentAssessmentPayload.version = currentAssessment.claimAssessmentVersion;
+      currentAssessmentPayload.change =
+        transitionByToVersion.get(currentAssessment.claimAssessmentVersion) || null;
+    }
 
     const history = historyRows.map((row: any) => ({
       assessedAt: row.createdAt,
+      version: row.claimAssessmentVersion,
       verdict: getClaimAssessmentPresentation(row.assessmentBand),
       confidenceLevel: row.verificationConfidence?.level || "low",
       supportingCount: (row.supportingEvidenceIds || []).length,
       contradictingCount: (row.contradictingEvidenceIds || []).length,
+      change: transitionByToVersion.get(row.claimAssessmentVersion) || null,
     }));
 
     // Related posts: same anonymous-safe block/mute + moderation-unavailable

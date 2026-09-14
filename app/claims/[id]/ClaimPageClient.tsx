@@ -16,9 +16,11 @@ import {
   getIndependenceNotes,
   getClaimTemporalApplicability,
   getUnresolvedEvidenceCaution,
+  getConfidenceLevelLabel,
   type ClaimVerdictPresentation,
   type ClaimExplanation,
   type ClaimUncertainty,
+  type AssessmentTransition,
 } from "@/lib/claimPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
 
@@ -45,18 +47,25 @@ type ClaimSummary = {
 
 type CurrentAssessment = {
   assessedAt: string;
+  version: number;
   verdict: ClaimVerdictPresentation;
   confidenceLevel: string;
   evidenceSummary: { supportingCount: number; contradictingCount: number; contextCount: number };
   summary: string;
+  // P4.4: what changed to reach this version from the one immediately
+  // before it - null when there is no prior version to compare against
+  // (this is the claim's very first assessment).
+  change: AssessmentTransition | null;
 };
 
 type HistoryItem = {
   assessedAt: string;
+  version: number;
   verdict: ClaimVerdictPresentation;
   confidenceLevel: string;
   supportingCount: number;
   contradictingCount: number;
+  change: AssessmentTransition | null;
 };
 
 type CommunityContext = {
@@ -82,13 +91,6 @@ type ClaimApiResponse = {
 function formatFollowerCount(count: number): string {
   return count === 1 ? "1 follower" : `${count} followers`;
 }
-
-const CONFIDENCE_LABEL: Record<string, string> = {
-  high: "High confidence",
-  moderate: "Moderate confidence",
-  low: "Low confidence",
-  very_low: "Very low confidence",
-};
 
 export default function ClaimPageClient({ id }: { id: string }) {
   const router = useRouter();
@@ -237,7 +239,7 @@ export default function ClaimPageClient({ id }: { id: string }) {
                 <div className="mb-3 flex flex-wrap items-center gap-3">
                   <ClaimVerdictBadge verdict={data.currentAssessment.verdict} />
                   <span className="text-xs text-slate-500">
-                    {CONFIDENCE_LABEL[data.currentAssessment.confidenceLevel] || "Confidence unknown"}
+                    {getConfidenceLevelLabel(data.currentAssessment.confidenceLevel)}
                   </span>
                 </div>
                 <p className="text-sm leading-6 text-veriverse-dark/80">
@@ -473,20 +475,60 @@ export default function ClaimPageClient({ id }: { id: string }) {
                   <p className="text-sm text-veriverse-dark/70">This is the first assessment.</p>
                 ) : (
                   <div className="space-y-2">
+                    {/* P4.4: what changed since the last recorded assessment
+                        to produce the CURRENT state - shown once, ahead of
+                        the historical rows below, so it reads as "how we got
+                        here" rather than being folded into the Current
+                        Assessment card itself (kept separate per P4.1/P4.3
+                        precedent). Absent entirely when there's nothing to
+                        compare (e.g. this claim's very first assessment). */}
+                    {data.currentAssessment?.change && (
+                      <div
+                        className="rounded-2xl border border-veriverse-border bg-white/40 px-3 py-2 text-xs text-veriverse-dark/70"
+                        data-testid="claim-current-change"
+                      >
+                        <p className="mb-1 font-semibold uppercase tracking-[0.14em] text-veriverse-dark/40">
+                          Since the last recorded assessment
+                        </p>
+                        <p>{data.currentAssessment.change.summary}</p>
+                        {data.currentAssessment.change.changes.length > 0 && (
+                          <ul className="mt-1 list-disc space-y-1 pl-4">
+                            {data.currentAssessment.change.changes.map((c, i) => (
+                              <li key={`${c.type}-${i}`}>{c.text}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
                     {data.history.map((item, index) => (
                       <div
                         key={`${item.assessedAt}-${index}`}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-veriverse-border bg-white/60 px-3 py-2 text-sm"
+                        className="rounded-2xl border border-veriverse-border bg-white/60 px-3 py-2 text-sm"
                       >
-                        <div className="flex items-center gap-2">
-                          <ClaimVerdictBadge verdict={item.verdict} />
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <ClaimVerdictBadge verdict={item.verdict} />
+                            <span className="text-xs text-slate-500">
+                              {getConfidenceLevelLabel(item.confidenceLevel)}
+                            </span>
+                          </div>
                           <span className="text-xs text-slate-500">
-                            {CONFIDENCE_LABEL[item.confidenceLevel] || "Confidence unknown"}
+                            {new Date(item.assessedAt).toLocaleDateString()}
                           </span>
                         </div>
-                        <span className="text-xs text-slate-500">
-                          {new Date(item.assessedAt).toLocaleDateString()}
-                        </span>
+                        {item.change && (
+                          <div className="mt-2 text-xs text-veriverse-dark/60" data-testid="claim-history-change">
+                            <p>{item.change.summary}</p>
+                            {item.change.changes.length > 0 && (
+                              <ul className="mt-1 list-disc space-y-1 pl-4">
+                                {item.change.changes.map((c, i) => (
+                                  <li key={`${c.type}-${i}`}>{c.text}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

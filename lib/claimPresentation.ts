@@ -544,3 +544,192 @@ export function getClaimTemporalApplicability(scope?: ClaimTemporalScopeInput | 
 
   return null;
 }
+
+// --- P4.4: assessment change narrative ---
+//
+// Answers "what changed between assessment versions, and why does that
+// matter?" - NOT "why did the AI change its mind", "who was right", or "what
+// is the final truth". Deliberately derived entirely from authoritative
+// TrustAssessment rows (one immutable row per version, guaranteed to exist
+// for every version) rather than ClaimChangeEvent: that model only records a
+// filtered, notification-worthy SUBSET of transitions (see
+// lib/claimChangeNotification.ts's classifyClaimChange - same band with no
+// support/contradiction zero-crossing produces no event at all), so it has
+// systematic gaps by design and would silently under-report real evidence
+// changes if used as a history source. TrustAssessment has no such gap.
+//
+// A shared qualitative label vocabulary for confidence, mirroring
+// ClaimPageClient's own CONFIDENCE_LABEL - defined here once so the change
+// narrative and the rest of the Claim page always describe the same four
+// levels with the same words (see getClaimUncertainty's own distinct,
+// advice-phrased "caution" labels, which are deliberately NOT this - they
+// answer a different question).
+const CONFIDENCE_LEVEL_LABEL: Record<string, string> = {
+  high: "High confidence",
+  moderate: "Moderate confidence",
+  low: "Low confidence",
+  very_low: "Very low confidence",
+};
+
+export function getConfidenceLevelLabel(confidenceLevel?: string | null): string {
+  return CONFIDENCE_LEVEL_LABEL[confidenceLevel || ""] ?? "Confidence unknown";
+}
+
+const CONFIDENCE_LEVEL_RANK: Record<string, number> = {
+  very_low: 0,
+  low: 1,
+  moderate: 2,
+  high: 3,
+};
+
+export type AssessmentSnapshotInput = {
+  version: number;
+  assessmentBand: string;
+  confidenceLevel: string;
+  // Full ID arrays (not just counts) so real additions/removals can be
+  // proven via set membership rather than inferred from a count delta alone
+  // - a same-count version with fully different evidence would otherwise
+  // look unchanged even though what was actually considered changed.
+  supportingEvidenceIds: string[];
+  contradictingEvidenceIds: string[];
+  contextEvidenceIds: string[];
+};
+
+export type AssessmentChangeType =
+  | "band"
+  | "supporting_evidence"
+  | "contradicting_evidence"
+  | "context_evidence"
+  | "confidence";
+
+export type AssessmentChange = {
+  type: AssessmentChangeType;
+  text: string;
+};
+
+export type AssessmentTransition = {
+  fromVersion: number;
+  toVersion: number;
+  summary: string;
+  changes: AssessmentChange[];
+};
+
+// Only ever states what the ID-set comparison actually proves: "more was
+// included" (current set is a proper superset - only additions), "some
+// previously included evidence is no longer part of this assessment"
+// (current set lost members - only removals, provable by set membership,
+// not merely a count decrease that could coincidentally hide a same-size
+// swap), or "the ... evidence considered changed" (both happened at once).
+// Returns null when the two sets are identical - never emits a bullet for
+// no-op "same evidence, re-fetched" cases.
+function describeEvidenceSetChange(
+  label: string,
+  type: AssessmentChangeType,
+  addedOnlyText: string,
+  prevIds: string[],
+  currIds: string[]
+): AssessmentChange | null {
+  const prevSet = new Set(prevIds);
+  const currSet = new Set(currIds);
+  const added = currIds.some((id) => !prevSet.has(id));
+  const removed = prevIds.some((id) => !currSet.has(id));
+
+  if (!added && !removed) return null;
+
+  if (added && !removed) {
+    return { type, text: addedOnlyText };
+  }
+  if (removed && !added) {
+    return {
+      type,
+      text: `Some previously included ${label} evidence is no longer part of this assessment.`,
+    };
+  }
+  return { type, text: `The ${label} evidence considered in this assessment changed.` };
+}
+
+// Compares ADJACENT authoritative versions only (v1->v2->v3->...), never
+// every historical version against the current one - each transition
+// describes a single deterministic step, not a cumulative forensic diff.
+// `snapshots` must already be sorted ascending by version (oldest first);
+// this function does not re-sort, matching boundEvidenceBuckets' own
+// convention of trusting caller-supplied ordering.
+export function getAssessmentChangeNarrative(snapshots: AssessmentSnapshotInput[]): AssessmentTransition[] {
+  const transitions: AssessmentTransition[] = [];
+
+  for (let i = 1; i < snapshots.length; i++) {
+    const prev = snapshots[i - 1];
+    const curr = snapshots[i];
+    const changes: AssessmentChange[] = [];
+
+    // Ordering is fixed: band change first, then supporting/contradicting/
+    // context evidence changes, then confidence change last - never the
+    // raw insertion order of any internal computation.
+    if (prev.assessmentBand !== curr.assessmentBand) {
+      const fromLabel = getClaimAssessmentPresentation(prev.assessmentBand).label;
+      const toLabel = getClaimAssessmentPresentation(curr.assessmentBand).label;
+      changes.push({ type: "band", text: `Assessment changed from ${fromLabel} to ${toLabel}.` });
+    }
+
+    const supportingChange = describeEvidenceSetChange(
+      "supporting",
+      "supporting_evidence",
+      "More supporting evidence was included in this assessment.",
+      prev.supportingEvidenceIds,
+      curr.supportingEvidenceIds
+    );
+    if (supportingChange) changes.push(supportingChange);
+
+    const contradictingChange = describeEvidenceSetChange(
+      "contradicting",
+      "contradicting_evidence",
+      "Additional contradicting evidence was included in this assessment.",
+      prev.contradictingEvidenceIds,
+      curr.contradictingEvidenceIds
+    );
+    if (contradictingChange) changes.push(contradictingChange);
+
+    const contextChange = describeEvidenceSetChange(
+      "unresolved or contextual",
+      "context_evidence",
+      "More unresolved or contextual evidence was included in this assessment.",
+      prev.contextEvidenceIds,
+      curr.contextEvidenceIds
+    );
+    if (contextChange) changes.push(contextChange);
+
+    if (prev.confidenceLevel !== curr.confidenceLevel) {
+      const prevRank = CONFIDENCE_LEVEL_RANK[prev.confidenceLevel];
+      const currRank = CONFIDENCE_LEVEL_RANK[curr.confidenceLevel];
+      // Direction is only stated when both levels are recognized and
+      // actually rank differently - an unrecognized level falls back to
+      // neutral "changed" wording rather than guessing a direction.
+      const direction =
+        prevRank !== undefined && currRank !== undefined && currRank !== prevRank
+          ? currRank > prevRank
+            ? "increased"
+            : "decreased"
+          : "changed";
+      changes.push({
+        type: "confidence",
+        text: `Assessment confidence ${direction} from ${getConfidenceLevelLabel(
+          prev.confidenceLevel
+        )} to ${getConfidenceLevelLabel(curr.confidenceLevel)}.`,
+      });
+    }
+
+    const summary =
+      changes.length > 0
+        ? `This assessment changed between version ${prev.version} and version ${curr.version}.`
+        : "Assessment updated with no material presentation-level change.";
+
+    transitions.push({
+      fromVersion: prev.version,
+      toVersion: curr.version,
+      summary,
+      changes,
+    });
+  }
+
+  return transitions;
+}

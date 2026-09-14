@@ -11,7 +11,10 @@ import {
   getClaimUncertainty,
   getUnresolvedEvidenceCaution,
   getClaimTemporalApplicability,
+  getConfidenceLevelLabel,
+  getAssessmentChangeNarrative,
   type ClaimUncertaintyInput,
+  type AssessmentSnapshotInput,
 } from "@/lib/claimPresentation";
 
 describe("getClaimAssessmentPresentation", () => {
@@ -437,5 +440,233 @@ describe("getClaimTemporalApplicability", () => {
     expect(allOutputs).not.toContain("replaces the previous");
     expect(allOutputs).not.toContain("supersede");
     expect(allOutputs).not.toContain("latest truth");
+  });
+});
+
+describe("getConfidenceLevelLabel", () => {
+  it("maps every confidence level to a stable, existing label", () => {
+    expect(getConfidenceLevelLabel("high")).toBe("High confidence");
+    expect(getConfidenceLevelLabel("moderate")).toBe("Moderate confidence");
+    expect(getConfidenceLevelLabel("low")).toBe("Low confidence");
+    expect(getConfidenceLevelLabel("very_low")).toBe("Very low confidence");
+  });
+
+  it("falls back for an unrecognized/missing level rather than throwing", () => {
+    expect(getConfidenceLevelLabel("some_future_level")).toBe("Confidence unknown");
+    expect(getConfidenceLevelLabel(undefined)).toBe("Confidence unknown");
+    expect(getConfidenceLevelLabel(null)).toBe("Confidence unknown");
+  });
+});
+
+function snapshot(overrides: Partial<AssessmentSnapshotInput> = {}): AssessmentSnapshotInput {
+  return {
+    version: 1,
+    assessmentBand: "weakly_supported",
+    confidenceLevel: "low",
+    supportingEvidenceIds: ["a"],
+    contradictingEvidenceIds: [],
+    contextEvidenceIds: [],
+    ...overrides,
+  };
+}
+
+describe("getAssessmentChangeNarrative - determinism and shape", () => {
+  it("produces identical output for identical input", () => {
+    const snapshots = [snapshot({ version: 1 }), snapshot({ version: 2, assessmentBand: "contested" })];
+    expect(getAssessmentChangeNarrative(snapshots)).toEqual(getAssessmentChangeNarrative(snapshots));
+  });
+
+  it("produces exactly N-1 transitions for N snapshots, comparing only adjacent pairs", () => {
+    const snapshots = [
+      snapshot({ version: 1 }),
+      snapshot({ version: 2 }),
+      snapshot({ version: 3, assessmentBand: "contested" }),
+    ];
+    const result = getAssessmentChangeNarrative(snapshots);
+    expect(result.length).toBe(2);
+    expect(result[0]).toMatchObject({ fromVersion: 1, toVersion: 2 });
+    expect(result[1]).toMatchObject({ fromVersion: 2, toVersion: 3 });
+  });
+
+  it("returns an empty array for zero or one snapshot", () => {
+    expect(getAssessmentChangeNarrative([])).toEqual([]);
+    expect(getAssessmentChangeNarrative([snapshot()])).toEqual([]);
+  });
+});
+
+describe("getAssessmentChangeNarrative - band change", () => {
+  it("describes a band change using the existing Claim presentation vocabulary", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, assessmentBand: "insufficient_evidence" }),
+      snapshot({ version: 2, assessmentBand: "contested" }),
+    ]);
+    const bandChange = result[0].changes.find((c) => c.type === "band");
+    expect(bandChange?.text).toBe("Assessment changed from Insufficient Evidence to Contested.");
+  });
+
+  it("omits a band-change entry when the band is unchanged", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, assessmentBand: "weakly_supported" }),
+      snapshot({ version: 2, assessmentBand: "weakly_supported" }),
+    ]);
+    expect(result[0].changes.some((c) => c.type === "band")).toBe(false);
+  });
+});
+
+describe("getAssessmentChangeNarrative - evidence added/removed", () => {
+  it("describes supporting evidence being added", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, supportingEvidenceIds: ["a"] }),
+      snapshot({ version: 2, supportingEvidenceIds: ["a", "b"] }),
+    ]);
+    const change = result[0].changes.find((c) => c.type === "supporting_evidence");
+    expect(change?.text).toBe("More supporting evidence was included in this assessment.");
+  });
+
+  it("describes contradicting evidence being added", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, contradictingEvidenceIds: [] }),
+      snapshot({ version: 2, contradictingEvidenceIds: ["x"] }),
+    ]);
+    const change = result[0].changes.find((c) => c.type === "contradicting_evidence");
+    expect(change?.text).toBe("Additional contradicting evidence was included in this assessment.");
+  });
+
+  it("only claims removal when the ID set actually proves it, not merely a lower count", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, supportingEvidenceIds: ["a", "b"] }),
+      snapshot({ version: 2, supportingEvidenceIds: ["a"] }),
+    ]);
+    const change = result[0].changes.find((c) => c.type === "supporting_evidence");
+    expect(change?.text).toBe("Some previously included supporting evidence is no longer part of this assessment.");
+  });
+
+  it("describes a same-size full replacement as changed, not silently as no-op", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, supportingEvidenceIds: ["a", "b"] }),
+      snapshot({ version: 2, supportingEvidenceIds: ["c", "d"] }),
+    ]);
+    const change = result[0].changes.find((c) => c.type === "supporting_evidence");
+    expect(change?.text).toBe("The supporting evidence considered in this assessment changed.");
+  });
+
+  it("omits an evidence-change entry when the exact same IDs are present, regardless of order", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, supportingEvidenceIds: ["a", "b"] }),
+      snapshot({ version: 2, supportingEvidenceIds: ["b", "a"] }),
+    ]);
+    expect(result[0].changes.some((c) => c.type === "supporting_evidence")).toBe(false);
+  });
+
+  it("describes unresolved/context evidence changes using the same rules", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, contextEvidenceIds: [] }),
+      snapshot({ version: 2, contextEvidenceIds: ["z"] }),
+    ]);
+    const change = result[0].changes.find((c) => c.type === "context_evidence");
+    expect(change?.text).toContain("unresolved or contextual evidence was included");
+  });
+});
+
+describe("getAssessmentChangeNarrative - confidence change", () => {
+  it("describes an increase directionally using the existing confidence vocabulary", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, confidenceLevel: "low" }),
+      snapshot({ version: 2, confidenceLevel: "moderate" }),
+    ]);
+    const change = result[0].changes.find((c) => c.type === "confidence");
+    expect(change?.text).toBe("Assessment confidence increased from Low confidence to Moderate confidence.");
+  });
+
+  it("describes a decrease directionally", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, confidenceLevel: "high" }),
+      snapshot({ version: 2, confidenceLevel: "very_low" }),
+    ]);
+    const change = result[0].changes.find((c) => c.type === "confidence");
+    expect(change?.text).toContain("decreased");
+  });
+
+  it("never emits a numeric confidence score", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1, confidenceLevel: "low" }),
+      snapshot({ version: 2, confidenceLevel: "high" }),
+    ]);
+    const allText = result.flatMap((t) => [t.summary, ...t.changes.map((c) => c.text)]).join(" ");
+    expect(allText).not.toMatch(/0\.\d\d/);
+  });
+});
+
+describe("getAssessmentChangeNarrative - multiple simultaneous changes and ordering", () => {
+  it("orders band, then supporting, then contradicting, then context, then confidence", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({
+        version: 1,
+        assessmentBand: "insufficient_evidence",
+        confidenceLevel: "very_low",
+        supportingEvidenceIds: [],
+        contradictingEvidenceIds: [],
+        contextEvidenceIds: [],
+      }),
+      snapshot({
+        version: 2,
+        assessmentBand: "contested",
+        confidenceLevel: "moderate",
+        supportingEvidenceIds: ["a"],
+        contradictingEvidenceIds: ["b"],
+        contextEvidenceIds: ["c"],
+      }),
+    ]);
+    const types = result[0].changes.map((c) => c.type);
+    expect(types).toEqual([
+      "band",
+      "supporting_evidence",
+      "contradicting_evidence",
+      "context_evidence",
+      "confidence",
+    ]);
+  });
+});
+
+describe("getAssessmentChangeNarrative - no-change transition", () => {
+  it("uses the restrained no-material-change summary and an empty changes list when nothing differs", () => {
+    const result = getAssessmentChangeNarrative([
+      snapshot({ version: 1 }),
+      snapshot({ version: 2 }),
+    ]);
+    expect(result[0].changes).toEqual([]);
+    expect(result[0].summary).toBe("Assessment updated with no material presentation-level change.");
+  });
+});
+
+describe("getAssessmentChangeNarrative - safety: no causal overclaim or internal jargon", () => {
+  const allBands = ["well_supported", "weakly_supported", "contested", "contradicted", "insufficient_evidence"];
+  const allConfidence = ["high", "moderate", "low", "very_low"];
+
+  it("never overclaims causation, truth, or supersession across the input space", () => {
+    for (const fromBand of allBands) {
+      for (const toBand of allBands) {
+        for (const fromConf of allConfidence) {
+          for (const toConf of allConfidence) {
+            const result = getAssessmentChangeNarrative([
+              snapshot({ version: 1, assessmentBand: fromBand, confidenceLevel: fromConf, supportingEvidenceIds: ["a"] }),
+              snapshot({ version: 2, assessmentBand: toBand, confidenceLevel: toConf, supportingEvidenceIds: ["a", "b"] }),
+            ]);
+            const allText = result
+              .flatMap((t) => [t.summary, ...t.changes.map((c) => c.text)])
+              .join(" ")
+              .toLowerCase();
+            expect(allText).not.toContain("because");
+            expect(allText).not.toContain("proved");
+            expect(allText).not.toContain("became true");
+            expect(allText).not.toContain("became false");
+            expect(allText).not.toContain("superseded");
+            expect(allText).not.toContain("ai found");
+            expect(allText).not.toMatch(/0\.\d\d/);
+            expect(allText).not.toMatch(/%/);
+          }
+        }
+      }
+    }
   });
 });
