@@ -20,6 +20,43 @@ import { ok } from "@/lib/apiResponse";
 
 export type Resolution = "existing" | "new" | "no_claim_found";
 
+// P5.5: the one seam the Partner API needs - "is this caller allowed to
+// trigger expensive verification right now" - factored out from a
+// hardcoded user-JWT check into an injectable policy, so a completely
+// different auth model (a partner API key + capability, never a user
+// session) can reuse this exact same reuse-or-verify decision tree instead
+// of a second copy of it. `hasRequester` is the cheap, synchronous
+// presence check used to decide whether to even attempt the expensive
+// path (vs. short-circuiting to verificationRequired:true);
+// `authorize` is the fuller gate (identity + whatever rate limit/quota
+// applies) invoked only once hasRequester is true. Existing callers never
+// pass this parameter and get byte-for-byte the same behavior as before
+// via defaultAuthorizer below - the web app's Text/URL routes are
+// unaffected by this change.
+export type ExpensiveVerificationAuthorizer = {
+  hasRequester: (req: Request) => boolean;
+  authorize: (req: Request) => Promise<{ authorized: true } | { authorized: false; response: Response }>;
+};
+
+const defaultAuthorizer: ExpensiveVerificationAuthorizer = {
+  hasRequester: (req) => Boolean(getUserIdFromRequest(req)),
+  authorize: async (req) => {
+    const guard = await requireActiveUser(req);
+    if (guard.errorResponse) return { authorized: false, response: guard.errorResponse };
+    const userId = String(guard.user._id);
+
+    const limitResponse = enforceRateLimit({
+      key: getRateLimitKey(req, "verify_text", userId),
+      windowMs: 60 * 1000,
+      max: 5,
+      message: "You are requesting verifications too quickly. Please slow down.",
+    });
+    if (limitResponse) return { authorized: false, response: limitResponse };
+
+    return { authorized: true };
+  },
+};
+
 export type VerifyResponsePayload = {
   contentType: ContentType;
   extractedClaim: string | null;
@@ -65,35 +102,29 @@ async function buildPayload(params: {
   };
 }
 
-// The only place either caller invokes the existing, unmodified
-// verification pipeline. It creates the Claim/EvidenceObjects/
-// TrustAssessment through its own normal authoritative path - this
-// function never duplicates that persistence, it only shapes the
-// pipeline's own result into the public contract via buildPayload's
-// shared, authoritative re-lookup. Deliberately always the same
-// "verify_text" rate-limit bucket regardless of caller (Text or URL mode) -
-// this gates the one expensive operation both modes ultimately share; a
-// URL-specific acquisition-cost bucket is a separate, additional gate the
-// URL route applies before ever reaching this function (see
-// app/api/verify/route.ts's "verify_url_fetch" bucket).
+// The only place any caller invokes the existing, unmodified verification
+// pipeline. It creates the Claim/EvidenceObjects/TrustAssessment through
+// its own normal authoritative path - this function never duplicates that
+// persistence, it only shapes the pipeline's own result into the public
+// contract via buildPayload's shared, authoritative re-lookup. The
+// default authorizer applies the same "verify_text" rate-limit bucket
+// regardless of caller (Text or URL mode) - this gates the one expensive
+// operation both modes ultimately share; a URL-specific acquisition-cost
+// bucket is a separate, additional gate the URL route applies before ever
+// reaching this function (see app/api/verify/route.ts's "verify_url_fetch"
+// bucket). A non-default authorizer (the Partner API) supplies its own
+// identity + quota gate entirely in place of this bucket - see
+// app/api/v1/verify/route.ts.
 async function runExpensiveVerification(
   req: Request,
+  authorizer: ExpensiveVerificationAuthorizer,
   resolutionText: string,
   contentType: ContentType,
   extractedClaim: string | null,
   extra: Record<string, unknown>
 ) {
-  const guard = await requireActiveUser(req);
-  if (guard.errorResponse) return guard.errorResponse;
-  const userId = String(guard.user._id);
-
-  const limitResponse = enforceRateLimit({
-    key: getRateLimitKey(req, "verify_text", userId),
-    windowMs: 60 * 1000,
-    max: 5,
-    message: "You are requesting verifications too quickly. Please slow down.",
-  });
-  if (limitResponse) return limitResponse;
+  const authResult = await authorizer.authorize(req);
+  if (!authResult.authorized) return authResult.response;
 
   const result = await evaluateContentTruthPipeline(resolutionText);
   const resultClaimId = result.claimId ?? null;
@@ -140,8 +171,12 @@ export async function resolveOrVerifyClaim(params: {
   // produces - e.g. URL mode's submittedUrl/finalUrl/pageTitle. Text mode
   // passes nothing extra and the response shape is unchanged from P5.1.
   extra?: Record<string, unknown>;
+  // P5.5: defaults to today's user-JWT behavior - existing callers (the
+  // web app's Text/URL routes) never pass this and are unaffected. The
+  // Partner API passes its own capability+quota authorizer instead.
+  authorizer?: ExpensiveVerificationAuthorizer;
 }): Promise<Response> {
-  const { req, resolutionText, contentType, extractedClaim, extra = {} } = params;
+  const { req, resolutionText, contentType, extractedClaim, extra = {}, authorizer = defaultAuthorizer } = params;
 
   if (resolutionText === null) {
     const payload = await buildPayload({
@@ -184,8 +219,7 @@ export async function resolveOrVerifyClaim(params: {
     // prior grounding/assessment attempt for this exact claim failed
     // fail-open). Verifying it is the expensive path, so it requires the
     // same auth gate as a brand-new claim.
-    const requesterId = getUserIdFromRequest(req);
-    if (!requesterId) {
+    if (!authorizer.hasRequester(req)) {
       const payload = await buildPayload({
         contentType,
         extractedClaim,
@@ -196,16 +230,15 @@ export async function resolveOrVerifyClaim(params: {
       return ok({ ...payload, ...extra });
     }
 
-    return await runExpensiveVerification(req, resolutionText, contentType, extractedClaim, extra);
+    return await runExpensiveVerification(req, authorizer, resolutionText, contentType, extractedClaim, extra);
   }
 
   // No existing Claim at all - a first-time verification would create
-  // one. Anonymous requests must remain non-mutating regardless of
-  // classification outcome (including a classifier failing open to
-  // "claim") - the auth gate below is what makes that true, structurally,
-  // not a special case in the classification logic itself.
-  const requesterId = getUserIdFromRequest(req);
-  if (!requesterId) {
+  // one. Anonymous/unauthorized requests must remain non-mutating
+  // regardless of classification outcome (including a classifier failing
+  // open to "claim") - the auth gate below is what makes that true,
+  // structurally, not a special case in the classification logic itself.
+  if (!authorizer.hasRequester(req)) {
     const payload = await buildPayload({
       contentType,
       extractedClaim,
@@ -216,5 +249,5 @@ export async function resolveOrVerifyClaim(params: {
     return ok({ ...payload, ...extra });
   }
 
-  return await runExpensiveVerification(req, resolutionText, contentType, extractedClaim, extra);
+  return await runExpensiveVerification(req, authorizer, resolutionText, contentType, extractedClaim, extra);
 }
