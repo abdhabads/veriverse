@@ -191,21 +191,109 @@ export function getClaimExplanation(input: ClaimExplanationInput): ClaimExplanat
   return { summary, reasons };
 }
 
+// --- Source type ---
+//
+// P4.2: EvidenceObject.sourceType is a coarse, hand-picked authority TIER
+// (see lib/sourceAuthority.ts's own header: "not a scientifically validated
+// measure of trustworthiness... do not present it to users as a precision
+// score"). This maps the categorical tier to a neutral, descriptive label -
+// never the underlying numeric authorityScore, and never wording that
+// implies the category itself vouches for accuracy ("Academic source", not
+// "Highly trustworthy academic source").
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  government: "Government source",
+  academic: "Academic source",
+  institutional: "Institutional source",
+  journalistic: "News source",
+  user_generated: "User-generated source",
+  unknown: "Unclassified source",
+};
+
+export function getSourceTypeLabel(sourceType?: string | null): string {
+  return SOURCE_TYPE_LABELS[sourceType || ""] ?? SOURCE_TYPE_LABELS.unknown;
+}
+
+// --- Publication date ---
+//
+// Absolute date only (no relative "3 days ago" wording, which would read as
+// a freshness verdict rather than a plain fact). Never fabricates a date -
+// a missing/unparseable publishedAt renders nothing rather than falling
+// back to retrievedAt (a different fact: when VeriVerse fetched the source,
+// not when the source was published).
+export function formatEvidencePublishedDate(publishedAt?: string | Date | null): string | null {
+  if (!publishedAt) return null;
+  const date = new Date(publishedAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+// --- Source independence (presentation-only recomputation) ---
+//
+// Deliberately does NOT read the stored EvidenceObject.independenceGroup
+// field. That field is only guaranteed comparable WITHIN one
+// persistEvidenceObjects() batch (lib/evidencePersistence.ts computes it via
+// lib/sourceIndependence.ts's computeIndependenceGroups, scoped only to the
+// candidates in that single call) - two EvidenceObjects from different
+// grounding runs could coincidentally carry the same raw group label
+// ("group-0") with no real relationship at all. Presenting that as a safe
+// independence signal would risk asserting a connection the data doesn't
+// actually establish for a Claim whose evidence spans multiple assessment
+// versions/runs.
+//
+// Instead this recomputes a simpler, presentation-only signal fresh from
+// the already-public `domain` field of exactly the evidence currently being
+// displayed: same normalized host = not independent. This mirrors the same
+// conservative "under-merge rather than over-merge" philosophy
+// lib/sourceIndependence.ts's own header already documents for the engine's
+// version, applied safely at presentation time instead of reusing a value
+// whose cross-run comparability isn't guaranteed. It only catches the
+// same-domain case, not the engine's rarer cross-domain verbatim-duplicate
+// case - a known, deliberate, conservative simplification.
+function normalizeDomainForIndependenceNote(domain?: string): string {
+  return (domain || "").toLowerCase().trim().replace(/^www\./, "");
+}
+
+export type IndependenceNoteInput = { domain?: string };
+
+export function getIndependenceNotes(items: IndependenceNoteInput[]): (string | null)[] {
+  const normalized = items.map((item) => normalizeDomainForIndependenceNote(item.domain));
+  const counts = new Map<string, number>();
+  for (const key of normalized) {
+    if (!key) continue;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return normalized.map((key) => {
+    if (!key) return null;
+    // Deliberately narrower than "not independent": this only proves the
+    // two citations share a normalized domain, which is sufficient reason
+    // to doubt independence but not sufficient to assert it's disproven -
+    // the engine's own grouping can also merge duplicated evidence text
+    // across different domains, a case this presentation-layer check
+    // cannot see (see the header comment above). Overclaiming "not
+    // independent" here would state a conclusion this narrower signal
+    // doesn't actually establish.
+    return (counts.get(key) || 0) > 1 ? "Same source domain as another citation" : null;
+  });
+}
+
 // --- Evidence adapter ---
 //
 // Maps public-safe EvidenceObject fields onto GroundedEvidencePanel's
-// existing GroundingSource shape (title/url/domain/stance/stanceEvidence).
-// Deliberately does not accept or forward authorityScore, relevanceScore,
-// stanceConfidence, independenceGroup, contentHash, evidenceHash,
-// providerRunId, provider, canonicalUrl, evidenceStart/evidenceEnd, claimId,
-// or claimComponentId - none of those are public-safe (see the P3.1 field
-// classification: heuristic scores presented as raw numbers would imply
-// false precision about source credibility, and the hash/provider/offset
-// fields are pure internal plumbing).
+// existing GroundingSource shape (title/url/domain/stance/stanceEvidence,
+// plus the P4.2 additions below). Deliberately does not accept or forward
+// authorityScore, relevanceScore, stanceConfidence, independenceGroup,
+// contentHash, evidenceHash, providerRunId, provider, canonicalUrl,
+// evidenceStart/evidenceEnd, claimId, or claimComponentId - none of those
+// are public-safe (see the P3.1 field classification: heuristic scores
+// presented as raw numbers would imply false precision about source
+// credibility, and the hash/provider/offset fields are pure internal
+// plumbing).
 export type PublicEvidenceItem = {
   sourceUrl: string;
   domain?: string;
   publisher?: string;
+  sourceType?: string;
+  publishedAt?: string | Date | null;
   stance: "supports" | "contradicts" | "context" | "unknown";
   evidenceText?: string | null;
 };
@@ -216,6 +304,9 @@ export type GroundingSourceLike = {
   domain: string;
   stance: "supports" | "contradicts" | "context" | "unknown";
   stanceEvidence?: string | null;
+  sourceTypeLabel?: string;
+  publishedAtLabel?: string | null;
+  independenceNote?: string | null;
 };
 
 // Publisher display rule: non-empty publisher, else domain, else "Source".
@@ -226,13 +317,23 @@ export function getEvidencePublisherLabel(publisher?: string, domain?: string): 
   return "Source";
 }
 
-export function toGroundingSource(item: PublicEvidenceItem): GroundingSourceLike {
+// independenceNote is computed by the caller (getIndependenceNotes) across
+// the full visible evidence set at once, since independence is a property
+// of the set, not any single item - this function only formats one item at
+// a time, matching its existing (pre-P4.2) contract.
+export function toGroundingSource(
+  item: PublicEvidenceItem,
+  independenceNote: string | null = null
+): GroundingSourceLike {
   return {
     title: getEvidencePublisherLabel(item.publisher, item.domain),
     url: item.sourceUrl,
     domain: item.domain || "",
     stance: item.stance,
     stanceEvidence: item.evidenceText ?? null,
+    sourceTypeLabel: getSourceTypeLabel(item.sourceType),
+    publishedAtLabel: formatEvidencePublishedDate(item.publishedAt),
+    independenceNote,
   };
 }
 

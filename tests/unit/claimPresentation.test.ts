@@ -3,6 +3,9 @@ import {
   getClaimAssessmentPresentation,
   getClaimSummarySentence,
   getEvidencePublisherLabel,
+  getSourceTypeLabel,
+  formatEvidencePublishedDate,
+  getIndependenceNotes,
   toGroundingSource,
   boundEvidenceBuckets,
 } from "@/lib/claimPresentation";
@@ -92,7 +95,7 @@ describe("getEvidencePublisherLabel", () => {
 });
 
 describe("toGroundingSource", () => {
-  it("maps public evidence fields onto the GroundedEvidencePanel shape", () => {
+  it("maps public evidence fields onto the GroundedEvidencePanel shape, including the P4.2 additions", () => {
     const result = toGroundingSource({
       sourceUrl: "https://example.com/a",
       domain: "example.com",
@@ -106,7 +109,26 @@ describe("toGroundingSource", () => {
       domain: "example.com",
       stance: "supports",
       stanceEvidence: "Officials confirmed it.",
+      sourceTypeLabel: "Unclassified source",
+      publishedAtLabel: null,
+      independenceNote: null,
     });
+  });
+
+  it("passes through a computed sourceTypeLabel, publishedAtLabel, and independenceNote", () => {
+    const result = toGroundingSource(
+      {
+        sourceUrl: "https://example.com/a",
+        domain: "example.com",
+        stance: "supports",
+        sourceType: "academic",
+        publishedAt: "2025-01-15T00:00:00.000Z",
+      },
+      "Same source domain as another citation"
+    );
+    expect(result.sourceTypeLabel).toBe("Academic source");
+    expect(result.publishedAtLabel).toBe("Jan 15, 2025");
+    expect(result.independenceNote).toBe("Same source domain as another citation");
   });
 
   it("never includes internal-only fields such as authorityScore or provider", () => {
@@ -118,6 +140,94 @@ describe("toGroundingSource", () => {
     expect(result).not.toHaveProperty("relevanceScore");
     expect(result).not.toHaveProperty("provider");
     expect(result).not.toHaveProperty("providerRunId");
+    expect(result).not.toHaveProperty("independenceGroup");
+  });
+});
+
+describe("getSourceTypeLabel", () => {
+  it("maps every stored sourceType enum value to a neutral, descriptive label", () => {
+    expect(getSourceTypeLabel("government")).toBe("Government source");
+    expect(getSourceTypeLabel("academic")).toBe("Academic source");
+    expect(getSourceTypeLabel("institutional")).toBe("Institutional source");
+    expect(getSourceTypeLabel("journalistic")).toBe("News source");
+    expect(getSourceTypeLabel("user_generated")).toBe("User-generated source");
+    expect(getSourceTypeLabel("unknown")).toBe("Unclassified source");
+  });
+
+  it("falls back to the unknown label for an unrecognized or missing value, never throwing", () => {
+    expect(getSourceTypeLabel("some_future_type")).toBe("Unclassified source");
+    expect(getSourceTypeLabel(undefined)).toBe("Unclassified source");
+    expect(getSourceTypeLabel(null)).toBe("Unclassified source");
+  });
+
+  it("never uses trust/credibility/authority-implying wording", () => {
+    for (const type of ["government", "academic", "institutional", "journalistic", "user_generated", "unknown"]) {
+      const label = getSourceTypeLabel(type).toLowerCase();
+      expect(label).not.toContain("trust");
+      expect(label).not.toContain("credib");
+      expect(label).not.toContain("reliable");
+      expect(label).not.toContain("authority");
+    }
+  });
+});
+
+describe("formatEvidencePublishedDate", () => {
+  it("formats a valid date as a concise absolute date, never relative wording", () => {
+    const label = formatEvidencePublishedDate("2025-01-15T00:00:00.000Z");
+    expect(label).toBe("Jan 15, 2025");
+    expect(label?.toLowerCase()).not.toContain("ago");
+  });
+
+  it("returns null for a missing date rather than fabricating one", () => {
+    expect(formatEvidencePublishedDate(null)).toBeNull();
+    expect(formatEvidencePublishedDate(undefined)).toBeNull();
+  });
+
+  it("returns null for an unparseable date rather than throwing", () => {
+    expect(formatEvidencePublishedDate("not-a-real-date")).toBeNull();
+  });
+});
+
+describe("getIndependenceNotes", () => {
+  it("flags items sharing a normalized domain as sharing a source domain, leaving a unique domain unflagged", () => {
+    const notes = getIndependenceNotes([
+      { domain: "example.com" },
+      { domain: "www.example.com" }, // normalizes to the same host
+      { domain: "other-example.com" },
+    ]);
+    expect(notes[0]).toBe("Same source domain as another citation");
+    expect(notes[1]).toBe("Same source domain as another citation");
+    expect(notes[2]).toBeNull();
+  });
+
+  it("never uses full-independence language the domain-only signal cannot prove", () => {
+    const notes = getIndependenceNotes([{ domain: "a.com" }, { domain: "a.com" }]);
+    for (const note of notes) {
+      expect(note?.toLowerCase()).not.toContain("not independent");
+      expect(note?.toLowerCase()).not.toContain("independent source");
+    }
+  });
+
+  it("never flags a domain that appears only once", () => {
+    const notes = getIndependenceNotes([{ domain: "a.com" }, { domain: "b.com" }, { domain: "c.com" }]);
+    expect(notes).toEqual([null, null, null]);
+  });
+
+  it("treats a missing domain as unflaggable rather than grouping empty strings together", () => {
+    const notes = getIndependenceNotes([{ domain: "" }, { domain: undefined }, { domain: "" }]);
+    expect(notes).toEqual([null, null, null]);
+  });
+
+  it("is deterministic for the same input", () => {
+    const items = [{ domain: "a.com" }, { domain: "a.com" }, { domain: "b.com" }];
+    expect(getIndependenceNotes(items)).toEqual(getIndependenceNotes(items));
+  });
+
+  it("never leaks a raw internal independence group identifier", () => {
+    const notes = getIndependenceNotes([{ domain: "a.com" }, { domain: "a.com" }]);
+    for (const note of notes) {
+      expect(note).not.toMatch(/group-\d+/);
+    }
   });
 });
 

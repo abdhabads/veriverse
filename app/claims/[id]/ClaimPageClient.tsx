@@ -11,7 +11,12 @@ import ClaimVerdictBadge from "@/components/ClaimVerdictBadge";
 import GroundedEvidencePanel from "@/components/GroundedEvidencePanel";
 import PostCard, { type Post } from "@/components/PostCard";
 import ClaimFollowButton from "@/components/ClaimFollowButton";
-import { toGroundingSource, type ClaimVerdictPresentation, type ClaimExplanation } from "@/lib/claimPresentation";
+import {
+  toGroundingSource,
+  getIndependenceNotes,
+  type ClaimVerdictPresentation,
+  type ClaimExplanation,
+} from "@/lib/claimPresentation";
 import { api, getErrorMessage } from "@/lib/apiClient";
 
 type PublicEvidenceItem = {
@@ -288,13 +293,25 @@ export default function ClaimPageClient({ id }: { id: string }) {
                     description="No supporting or contradicting sources have been attached to this claim yet."
                   />
                 ) : (
-                  <GroundedEvidencePanel
-                    groundingSources={[...data.evidence.supporting, ...data.evidence.contradicting].map(
-                      toGroundingSource
-                    )}
-                    supportCount={data.evidence.supporting.length}
-                    contradictionCount={data.evidence.contradicting.length}
-                  />
+                  (() => {
+                    const combinedEvidence = [...data.evidence.supporting, ...data.evidence.contradicting];
+                    // Independence is only meaningful relative to the other
+                    // sources actually shown here - computed fresh from the
+                    // already-public domain field, not the stored
+                    // independenceGroup (which is only comparable within a
+                    // single grounding run, not across this Claim's full
+                    // history). See lib/claimPresentation.ts.
+                    const independenceNotes = getIndependenceNotes(combinedEvidence);
+                    return (
+                      <GroundedEvidencePanel
+                        groundingSources={combinedEvidence.map((item, index) =>
+                          toGroundingSource(item, independenceNotes[index])
+                        )}
+                        supportCount={data.evidence.supporting.length}
+                        contradictionCount={data.evidence.contradicting.length}
+                      />
+                    );
+                  })()
                 )}
               </div>
             )}

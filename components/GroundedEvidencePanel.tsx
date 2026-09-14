@@ -8,6 +8,15 @@ type GroundingSource = {
   domain: string;
   stance: "supports" | "contradicts" | "context" | "unknown";
   stanceEvidence?: string | null;
+  // P4.2: optional source-transparency metadata (categorical source type,
+  // an absolute publication date, and a plain-language independence note).
+  // All three are derived presentation, already safe to show as-is - never
+  // raw scores or internal group IDs. Optional and rendered only when
+  // present, so existing callers (e.g. the post detail page) that don't
+  // pass them keep rendering exactly as before.
+  sourceTypeLabel?: string;
+  publishedAtLabel?: string | null;
+  independenceNote?: string | null;
 };
 
 type EvidenceAssessment = {
@@ -257,6 +266,18 @@ export default function GroundedEvidencePanel({
                 >
                   {source.title || source.domain}
                 </a>
+
+                {source.sourceTypeLabel || source.publishedAtLabel ? (
+                  <p className="mt-1 text-[11px] text-veriverse-dark/45">
+                    {[source.sourceTypeLabel, source.publishedAtLabel].filter(Boolean).join(" · ")}
+                  </p>
+                ) : null}
+
+                {source.independenceNote ? (
+                  <p className="mt-1 text-[11px] italic text-veriverse-dark/45">
+                    {source.independenceNote}
+                  </p>
+                ) : null}
 
                 {source.stanceEvidence?.trim() ? (
                   <p className="mt-1 text-xs leading-5 text-veriverse-dark/60">
