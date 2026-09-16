@@ -94,7 +94,7 @@ test("evidence disclosure is collapsed by default and toggles aria-expanded", as
   // Independent counts are shown, not raw supportCount/contradictionCount
   // duplicated a second time, and no raw risk/verification line is present.
   await expect(card.getByText(/Supports:\s*1/)).toBeVisible();
-  await expect(card.getByText(/Evidence confidence:\s*70%/)).toBeVisible();
+  await expect(card.getByText(/Search confidence:\s*70%/)).toBeVisible();
 
   // The evidence panel no longer repeats a second, independently-computed
   // verdict badge (VerificationBadge) alongside its own confidence pill -
@@ -114,6 +114,45 @@ test("evidence disclosure is collapsed by default and toggles aria-expanded", as
   // Same control collapses it again.
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
+});
+
+test("a genuine zero groundingConfidence on a Post still renders 'Search confidence: 0%'", async ({ page }) => {
+  const ZERO_CONFIDENCE_CONTENT =
+    "A distinct post with genuinely zero search confidence, for regression coverage.";
+  const uri = process.env.MONGO_URI!;
+  await mongoose.connect(uri);
+  const author = await User.findOne({ email: "usera@test.com" });
+  if (author) {
+    await Post.create({
+      author: author._id,
+      content: ZERO_CONFIDENCE_CONTENT,
+      status: "unverified",
+      aiLabel: "safe",
+      verificationScore: 0.2,
+      groundingStatus: "checked",
+      groundingSummary: "Minimal evidence found.",
+      groundingSources: [
+        { title: "Example", url: "https://example.com/zero", domain: "example.com", stance: "context" },
+      ],
+      groundingConfidence: 0,
+      contradictionCount: 0,
+      supportCount: 0,
+      contentType: "claim",
+    });
+  }
+  await mongoose.disconnect();
+
+  await login(page, "usera@test.com", "Password123!");
+  await page.goto("/feed");
+
+  const card = page
+    .locator('[data-testid="post-card"]')
+    .filter({ hasText: ZERO_CONFIDENCE_CONTENT })
+    .first();
+  await expect(card).toBeVisible({ timeout: 30_000 });
+
+  await card.getByRole("button", { name: /why this assessment/i }).click();
+  await expect(card.getByText(/Search confidence:\s*0%/)).toBeVisible();
 });
 
 test("legacy post with no evidence data still renders the card and toggle safely", async ({ page }) => {

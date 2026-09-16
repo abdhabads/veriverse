@@ -129,6 +129,20 @@ test("rendered: evidence cards show a neutral source-type label and an absolute 
   await expect(page.getByText("Jan 15, 2025")).toBeVisible();
 });
 
+test("rendered: Claim page never fabricates a Search confidence percentage (no groundingConfidence exists at Claim level)", async ({
+  page,
+}) => {
+  const { claimId } = await seedAssessedClaim([candidate({ stance: "supports" })]);
+
+  await login(page, "usera@test.com", "Password123!");
+  await page.goto(`/claims/${claimId}`);
+
+  await page.getByRole("button", { name: /^Evidence$/i }).click();
+  const panel = page.locator("#claim-evidence-panel");
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  await expect(panel.getByText(/Search confidence/)).toHaveCount(0);
+});
+
 test("rendered: two sources sharing a domain are flagged as the same source domain, not asserted as fully non-independent", async ({ page }) => {
   const { claimId } = await seedAssessedClaim([
     candidate({ stance: "supports", domain: "shared-example.com" }),

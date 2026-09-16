@@ -227,12 +227,14 @@ export default function GroundedEvidencePanel({
             {sourceDomainSummary}
           </span>
         ) : null}
-        <span
-          className="vv-verdict-pill vv-verdict-neutral"
-          title="Reflects how thoroughly evidence was searched for - not how likely the claim is true."
-        >
-          Search confidence: {Math.round(Number(groundingConfidence || 0))}%
-        </span>
+        {groundingConfidence !== undefined && (
+          <span
+            className="vv-verdict-pill vv-verdict-neutral"
+            title="Reflects how thoroughly evidence was searched for - not how likely the claim is true."
+          >
+            Search confidence: {Math.round(groundingConfidence)}%
+          </span>
+        )}
         <span className="vv-verdict-pill vv-verdict-positive">
           Supports: {Number(displaySupportCount || 0)}
         </span>
