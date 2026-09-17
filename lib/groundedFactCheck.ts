@@ -147,6 +147,27 @@ it is a reliable source clearly about that same role/title.
   the specific claim.
 - "unknown": the source's relationship to the claim can't be determined.
 
+A source can report THAT a claim was said, published, changed, removed,
+disputed, endorsed, or described by an institution or person without
+itself being evidence FOR or AGAINST the underlying factual proposition.
+When a source's content is ABOUT an institution/person/website having
+said/published/changed/removed/disputed/endorsed/described something -
+rather than presenting the underlying scientific or factual evidence
+itself - its stance should normally be "context", not "supports" or
+"contradicts", even if the reported statement has a clear polarity.
+
+Example: for the claim "Vaccines cause autism", a news article reporting
+that the CDC updated its website wording about whether vaccines cause
+autism is evidence about the CDC's messaging/change, not evidence that
+vaccines cause autism. It must not be marked "supports" merely because it
+reports that the wording change favors the claim.
+
+This applies in both directions: a source quoting an institution saying a
+claim is false is not automatically substantive "contradicts" evidence
+either - only mark "contradicts" if the source itself supplies evidence
+bearing on the underlying proposition (data, findings, direct explanation),
+not merely that someone said the claim is false.
+
 Every source's "stance" must be consistent with groundingSummary: if the
 summary concludes the claim is false, the sources that establish that
 should be marked "contradicts", not "supports".
@@ -296,6 +317,20 @@ export async function runGroundedFactCheck(
           })
       : [];
 
+  const allStances = mappedSources.map((entry) => entry.source.stance);
+  // Sign-consistency guard: the prompt itself instructs a NEGATIVE adjustment
+  // when evidence supports the claim (line ~156, "use a negative adjustment
+  // like -5 to -20") - the model can still return a positive value despite
+  // unanimous "supports" stances (observed directly: claim "Vaccines do not
+  // cause autism", 3/3 supports, evidenceRiskAdjustment +15). This clamps
+  // only that specific, provably-inconsistent case - a claim with ANY
+  // "contradicts" stance is untouched, so genuine contradictory evidence is
+  // never suppressed or reduced by this guard.
+  const rawAdjustment = clampAdjustment(parsed.evidenceRiskAdjustment || 0);
+  const unanimousSupport =
+    allStances.length > 0 && allStances.every((stance) => stance === "supports");
+  const evidenceRiskAdjustment = unanimousSupport ? Math.min(0, rawAdjustment) : rawAdjustment;
+
   return {
     groundingStatus:
       parsed.groundingStatus === "checked" ? "checked" : "insufficient_evidence",
@@ -305,7 +340,7 @@ export async function runGroundedFactCheck(
         : "",
     groundingSources: mappedSources.map((entry) => entry.source),
     evidenceCandidates: mappedSources.map((entry) => entry.candidate),
-    evidenceRiskAdjustment: clampAdjustment(parsed.evidenceRiskAdjustment || 0),
+    evidenceRiskAdjustment,
     raw: { research: researchText, formatted: parsed },
   };
 }
